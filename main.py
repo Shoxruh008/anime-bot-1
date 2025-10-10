@@ -18,7 +18,7 @@ CHANNELS_FILE = "channels.json"
 logging.basicConfig(level=logging.INFO)
 bot = telebot.TeleBot(API_TOKEN)
 
-# 📂 JSON fayllarini tayyorlash
+# 📂 JSON fayllarini tayyorlashs
 for file in [JSON_FILE, ADMINS_FILE, CHANNELS_FILE]:
     if not os.path.exists(file):
         with open(file, "w", encoding="utf-8") as f:
