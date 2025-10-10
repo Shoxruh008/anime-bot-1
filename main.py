@@ -97,7 +97,38 @@ def main_menu(user_id):
     )
     return keyboard
 
-# PDF yaratish funksiyasi (fontsiz versiya)
+# Matnni PDF uchun to'g'rilash
+def clean_text_for_pdf(text):
+    """Matndagi maxsus belgilarni oddiy belgilarga almashtirish"""
+    replacements = {
+        'ʻ': "'",
+        'ʼ': "'",
+        '‘': "'",
+        '’': "'",
+        '`': "'",
+        'ʻ': "'",
+        'ʼ': "'",
+        '´': "'",
+        'ʹ': "'",
+        'ʺ': '"',
+        '«': '"',
+        '»': '"',
+        '„': '"',
+        '“': '"',
+        '”': '"',
+        '–': '-',
+        '—': '-',
+        '…': '...',
+        '‘': "'",
+        '’': "'"
+    }
+    
+    for old, new in replacements.items():
+        text = text.replace(old, new)
+    
+    return text
+
+# PDF yaratish funksiyasi (UTF-8 muammosiz versiya)
 def create_anime_pdf():
     anime_data = load_data(JSON_FILE)
     
@@ -130,8 +161,11 @@ def create_anime_pdf():
     
     # Har bir anime uchun ma'lumot
     for i, (code, anime) in enumerate(anime_data.items(), 1):
+        # Matnlarni to'g'rilash
+        clean_title = clean_text_for_pdf(anime['title'])
+        
         pdf.set_font('Arial', 'B', 14)
-        pdf.cell(0, 10, f"{i}. {anime['title']}", 0, 1)
+        pdf.cell(0, 10, f"{i}. {clean_title}", 0, 1)
         
         pdf.set_font('Arial', '', 10)
         pdf.cell(0, 8, f"Kod: {code}", 0, 1)
@@ -146,8 +180,9 @@ def create_anime_pdf():
             # Qismlar ro'yxati
             pdf.cell(0, 8, "Qismlar:", 0, 1)
             for j, episode in enumerate(anime["episodes"][:10], 1):  # Faqat first 10 qism
+                clean_episode = clean_text_for_pdf(episode['episode'])
                 pdf.cell(10, 6, "", 0, 0)  # Indent
-                pdf.cell(0, 6, f"{j}. {episode['episode']}", 0, 1)
+                pdf.cell(0, 6, f"{j}. {clean_episode}", 0, 1)
             if len(anime["episodes"]) > 10:
                 pdf.cell(10, 6, "", 0, 0)
                 pdf.cell(0, 6, f"... va yana {len(anime['episodes']) - 10} qism", 0, 1)
@@ -162,7 +197,7 @@ def create_anime_pdf():
     
     # Fayl nomi
     filename = f"anime_list_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
-    pdf.output(filename)
+    pdf.output(filename, 'F')  # 'F' - faylga yozish
     return filename
 
 # 📌 /start
@@ -349,9 +384,46 @@ def all_anime_list_callback(call):
         
     except Exception as e:
         logging.error(f"PDF yaratishda xato: {e}")
-        bot.send_message(call.message.chat.id, f"❌ <b>Xato:</b> PDF yaratishda muammo yuz berdi: {str(e)}", parse_mode="HTML")
+        # Oddiy text formatda ro'yxat yuborish
+        try:
+            send_text_anime_list(call.message.chat.id)
+        except Exception as e2:
+            bot.send_message(call.message.chat.id, f"❌ <b>Xato:</b> Ro'yxat yaratishda muammo yuz berdi: {str(e)}", parse_mode="HTML")
     
     bot.answer_callback_query(call.id)
+
+# Text formatda anime ro'yxati yuborish
+def send_text_anime_list(chat_id):
+    anime_data = load_data(JSON_FILE)
+    
+    if not anime_data:
+        bot.send_message(chat_id, "❌ <b>Hozircha hech qanday anime mavjud emas.</b>", parse_mode="HTML")
+        return
+    
+    text = "📚 <b>Barcha Animelar Ro'yxati</b>\n\n"
+    
+    for i, (code, anime) in enumerate(anime_data.items(), 1):
+        link = f"https://t.me/{bot.get_me().username}?start={code}"
+        
+        text += f"<b>{i}. {anime['title']}</b>\n"
+        text += f"   🆔 <code>{code}</code>\n"
+        text += f"   🔗 {link}\n"
+        
+        if "episodes" in anime:
+            text += f"   📺 Serial ({len(anime['episodes'])} qism)\n"
+        else:
+            text += f"   🎬 Bitta anime\n"
+        
+        text += "\n"
+        
+        # Har 10 anime dan keyin yangi xabar
+        if i % 10 == 0:
+            bot.send_message(chat_id, text, parse_mode="HTML")
+            text = ""
+    
+    # Qolgan animelarni yuborish
+    if text:
+        bot.send_message(chat_id, text, parse_mode="HTML")
 
 # Episode tanlash
 @bot.callback_query_handler(func=lambda call: call.data.startswith('ep_'))
