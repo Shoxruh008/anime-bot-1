@@ -706,12 +706,95 @@ def get_title(msg):
     user_id = msg.from_user.id
     user_data = user_states[user_id]
     user_data['title'] = msg.text
-    user_data['state'] = 'waiting_for_episode_name' if user_data['is_series'] else 'waiting_for_video'
     
     if user_data['is_series']:
-        bot.send_message(msg.chat.id, "📹 Endi birinchi qism nomini yuboring. Masalan: <code>01-qism</code>\n\nKeyin video yuboring.", parse_mode="HTML")
+        # Serial uchun qismlar sonini so'rash
+        user_data['state'] = 'waiting_for_episodes_count'
+        bot.send_message(msg.chat.id, "🔢 <b>Nechta qism bor?</b>\n\nQismlar sonini raqamda yuboring. Masalan: <code>12</code>", parse_mode="HTML")
     else:
+        # Bitta anime uchun videoni so'rash
+        user_data['state'] = 'waiting_for_video'
         bot.send_message(msg.chat.id, "📹 Endi video yuboring:", parse_mode="HTML")
+
+# Serial uchun qismlar sonini qabul qilish
+@bot.message_handler(func=lambda message: message.from_user.id in user_states and user_states[message.from_user.id]['state'] == 'waiting_for_episodes_count')
+def get_episodes_count(msg):
+    user_id = msg.from_user.id
+    user_data = user_states[user_id]
+    
+    if not msg.text.isdigit():
+        bot.send_message(msg.chat.id, "❌ <b>Iltimos, faqat raqam yuboring!</b>\n\nMasalan: <code>12</code>", parse_mode="HTML")
+        return
+    
+    episodes_count = int(msg.text)
+    if episodes_count <= 0:
+        bot.send_message(msg.chat.id, "❌ <b>Qismlar soni 0 dan katta bo'lishi kerak!</b>", parse_mode="HTML")
+        return
+    
+    user_data['episodes_count'] = episodes_count
+    user_data['current_episode'] = 1
+    user_data['state'] = 'waiting_for_episode_video'
+    
+    bot.send_message(
+        msg.chat.id,
+        f"✅ <b>{episodes_count} qism qabul qilindi!</b>\n\n"
+        f"📹 Endi <b>1-qism</b> uchun video yuboring:",
+        parse_mode="HTML"
+    )
+
+# Serial anime uchun video qabul qilish
+@bot.message_handler(content_types=['video'], func=lambda message: message.from_user.id in user_states and user_states[message.from_user.id]['state'] == 'waiting_for_episode_video')
+def get_episode_video(msg):
+    user_id = msg.from_user.id
+    user_data = user_states[user_id]
+    
+    if 'episodes' not in user_data:
+        user_data['episodes'] = []
+    
+    file_id = msg.video.file_id
+    current_episode = user_data['current_episode']
+    
+    # Qismni saqlash
+    user_data['episodes'].append({
+        'episode': f"{current_episode}-qism",
+        'file_id': file_id
+    })
+    
+    # Keyingi qismga o'tish
+    user_data['current_episode'] += 1
+    
+    if user_data['current_episode'] <= user_data['episodes_count']:
+        # Keyingi qismni so'rash
+        bot.send_message(
+            msg.chat.id,
+            f"✅ <b>{current_episode}-qism</b> qo'shildi!\n\n"
+            f"📹 Endi <b>{user_data['current_episode']}-qism</b> uchun video yuboring:",
+            parse_mode="HTML"
+        )
+    else:
+        # Barcha qismlar qo'shildi
+        title = user_data['title']
+        code = str(abs(hash(title)))[:8]
+        
+        anime_data = load_data(JSON_FILE)
+        anime_data[code] = {
+            "title": title,
+            "episodes": user_data['episodes']
+        }
+        save_data(anime_data, JSON_FILE)
+        
+        link = f"https://t.me/AnirenXinata_bot?start={code}"
+        bot.send_message(
+            msg.chat.id,
+            f"✅ <b>Serial muvaffaqiyatli qo'shildi!</b>\n\n"
+            f"🎬 <b>Nomi:</b> {title}\n"
+            f"📺 <b>Qismlar soni:</b> {user_data['episodes_count']}\n"
+            f"🔗 <b>Link:</b> <code>{link}</code>",
+            parse_mode="HTML"
+        )
+        
+        if user_id in user_states:
+            del user_states[user_id]
 
 # Bitta anime uchun video qabul qilish
 @bot.message_handler(content_types=['video'], func=lambda message: message.from_user.id in user_states and user_states[message.from_user.id]['state'] == 'waiting_for_video')
@@ -741,56 +824,6 @@ def get_video(msg):
     
     if user_id in user_states:
         del user_states[user_id]
-
-# Serial anime uchun qism nomi qabul qilish
-@bot.message_handler(func=lambda message: message.from_user.id in user_states and user_states[message.from_user.id]['state'] == 'waiting_for_episode_name')
-def get_episode_name(msg):
-    user_id = msg.from_user.id
-    user_data = user_states[user_id]
-    
-    if msg.text == "/done":
-        title = user_data['title']
-        code = str(abs(hash(title)))[:8]
-        
-        link = f"https://t.me/AnirenXinata_bot?start={code}"
-        bot.send_message(
-            msg.chat.id,
-            f"✅ <b>Serial muvaffaqiyatli saqlandi!</b>\n\n"
-            f"🎬 <b>Nomi:</b> {title}\n"
-            f"🔗 <b>Link:</b> <code>{link}</code>",
-            parse_mode="HTML"
-        )
-        if user_id in user_states:
-            del user_states[user_id]
-        return
-        
-    user_data['episode_name'] = msg.text
-    user_data['state'] = 'waiting_for_episode_video'
-    bot.send_message(msg.chat.id, "📹 Endi video yuboring:")
-
-# Serial anime uchun video qabul qilish
-@bot.message_handler(content_types=['video'], func=lambda message: message.from_user.id in user_states and user_states[message.from_user.id]['state'] == 'waiting_for_episode_video')
-def get_episode_video(msg):
-    user_id = msg.from_user.id
-    user_data = user_states[user_id]
-    
-    title = user_data['title']
-    episode_name = user_data['episode_name']
-    file_id = msg.video.file_id
-    code = str(abs(hash(title)))[:8]
-
-    anime_data = load_data(JSON_FILE)
-    if code not in anime_data:
-        anime_data[code] = {
-            "title": title,
-            "episodes": []
-        }
-    
-    anime_data[code]["episodes"].append({"episode": episode_name, "file_id": file_id})
-    save_data(anime_data, JSON_FILE)
-    
-    bot.send_message(msg.chat.id, f"✅ <b>{episode_name}</b> qo'shildi!\n\nKeyingi qism nomini yuboring yoki <code>/done</code> bilan tugating.", parse_mode="HTML")
-    user_data['state'] = 'waiting_for_episode_name'
 
 # Adminlar boshqaruvi
 @bot.callback_query_handler(func=lambda call: call.data == 'admin_manage')
