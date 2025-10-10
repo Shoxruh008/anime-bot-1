@@ -18,7 +18,7 @@ CHANNELS_FILE = "channels.json"
 logging.basicConfig(level=logging.INFO)
 bot = telebot.TeleBot(API_TOKEN)
 
-# 📂 JSON fayllarini tayyorlashs
+# 📂 JSON fayllarini tayyorlash
 for file in [JSON_FILE, ADMINS_FILE, CHANNELS_FILE]:
     if not os.path.exists(file):
         with open(file, "w", encoding="utf-8") as f:
@@ -296,7 +296,7 @@ def start(msg):
         try:
             if "episodes" in anime:  # Ko'p qismli anime
                 # Sahifalangan ro'yxatni ko'rsatish (0-sahifa)
-                show_episodes_page(msg.chat.id, anime, args, 0, msg.message_id)
+                show_episodes_page(msg.chat.id, anime, args, 0)
             else:  # Bitta anime
                 bot.send_video(msg.chat.id, anime["file_id"], caption=f"<b>🎌 {anime['title']}</b>", parse_mode="HTML")
         except Exception as e:
@@ -331,10 +331,11 @@ def refresh_anime_menu_callback(call):
     
     keyboard.add(types.InlineKeyboardButton("🔙 Orqaga", callback_data="main_menu"))
     
-    bot.send_message(
-        call.message.chat.id,
+    bot.edit_message_text(
         "🔄 <b>Anime yangilash</b>\n\n"
         "Qaysi anime ni yangilamoqchisiz?",
+        call.message.chat.id,
+        call.message.message_id,
         reply_markup=keyboard,
         parse_mode="HTML"
     )
@@ -357,23 +358,27 @@ def start_refresh_anime(call):
     
     anime = anime_data[anime_code]
     
-    # Foydalanuvchi holatini sozlash
+    # Foydalanuvchi holatini to'g'ri sozlash
     user_states[user_id] = {
         'state': 'refreshing_anime',
         'anime_code': anime_code,
         'anime_title': anime['title'],
         'is_series': 'episodes' in anime,
-        'current_episode_index': 0
+        'current_episode_index': 0,
+        'episodes_count': len(anime["episodes"]) if "episodes" in anime else 1
     }
     
     if "episodes" in anime:
         # Serial anime
         episodes_count = len(anime["episodes"])
+        first_episode = anime["episodes"][0]
+        
         bot.send_message(
             call.message.chat.id,
             f"🔄 <b>{anime['title']}</b> serialini yangilash\n\n"
             f"📺 Jami {episodes_count} qism\n\n"
-            f"1-qism uchun video yuboring:",
+            f"Birinchi qism: <b>{first_episode['episode']}</b>\n"
+            f"Video yuboring:",
             parse_mode="HTML"
         )
     else:
@@ -399,7 +404,8 @@ def refresh_anime_video(msg):
     
     if anime_code not in anime_data:
         bot.send_message(msg.chat.id, "❌ <b>Anime topilmadi!</b>", parse_mode="HTML")
-        del user_states[user_id]
+        if user_id in user_states:
+            del user_states[user_id]
         return
     
     anime = anime_data[anime_code]
@@ -412,6 +418,9 @@ def refresh_anime_video(msg):
         if current_index < len(episodes):
             # Joriy qismni yangilash
             episodes[current_index]["file_id"] = file_id
+            
+            # Ma'lumotlarni saqlash
+            save_data(anime_data, JSON_FILE)
             
             # Keyingi qismga o'tish
             user_data['current_episode_index'] += 1
@@ -428,17 +437,18 @@ def refresh_anime_video(msg):
                 )
             else:
                 # Barcha qismlar yangilandi
-                save_data(anime_data, JSON_FILE)
                 bot.send_message(
                     msg.chat.id,
                     f"✅ <b>{anime['title']}</b> seriali muvaffaqiyatli yangilandi!\n\n"
                     f"📺 Jami {len(episodes)} qism yangilandi",
                     parse_mode="HTML"
                 )
-                del user_states[user_id]
+                if user_id in user_states:
+                    del user_states[user_id]
         else:
             bot.send_message(msg.chat.id, "❌ <b>Barcha qismlar yangilandi!</b>", parse_mode="HTML")
-            del user_states[user_id]
+            if user_id in user_states:
+                del user_states[user_id]
     
     else:
         # Bitta anime yangilash
@@ -450,7 +460,8 @@ def refresh_anime_video(msg):
             f"✅ <b>{anime['title']}</b> filmi muvaffaqiyatli yangilandi!",
             parse_mode="HTML"
         )
-        del user_states[user_id]
+        if user_id in user_states:
+            del user_states[user_id]
 
 # Barcha animelar ro'yxati (PDF)
 @bot.callback_query_handler(func=lambda call: call.data == 'all_anime_list')
@@ -565,16 +576,20 @@ def process_episode(call):
         return
         
     anime = data[anime_code]
-    if ep_index >= len(anime["episodes"]):
+    if "episodes" not in anime or ep_index >= len(anime["episodes"]):
         bot.answer_callback_query(call.id, "❌ Qism topilmadi!")
         return
         
     episode = anime["episodes"][ep_index]
     
-    bot.send_video(call.message.chat.id, episode["file_id"], 
-                  caption=f"<b>🎌 {anime['title']}</b>\n\n<b>📺 Qism:</b> {episode['episode']}", 
-                  parse_mode="HTML")
-    bot.answer_callback_query(call.id)
+    try:
+        bot.send_video(call.message.chat.id, episode["file_id"], 
+                      caption=f"<b>🎌 {anime['title']}</b>\n\n<b>📺 Qism:</b> {episode['episode']}", 
+                      parse_mode="HTML")
+        bot.answer_callback_query(call.id)
+    except Exception as e:
+        logging.error(f"Video yuborishda xato: {e}")
+        bot.answer_callback_query(call.id, "❌ Video yuborishda xatolik! File ID eskirgan bo'lishi mumkin.")
 
 # Sahifa navigatsiyasi
 @bot.callback_query_handler(func=lambda call: call.data.startswith('page_'))
@@ -652,8 +667,13 @@ def add_anime_callback(call):
 # Asosiy menyuga qaytish
 @bot.callback_query_handler(func=lambda call: call.data == 'main_menu')
 def main_menu_callback(call):
-    bot.send_message(call.message.chat.id, "🏠 <b>Asosiy menyu</b>", 
-                    reply_markup=main_menu(call.from_user.id), parse_mode="HTML")
+    bot.edit_message_text(
+        "🏠 <b>Asosiy menyu</b>", 
+        call.message.chat.id,
+        call.message.message_id,
+        reply_markup=main_menu(call.from_user.id), 
+        parse_mode="HTML"
+    )
     bot.answer_callback_query(call.id)
 
 # Bitta anime qo'shish
@@ -719,7 +739,8 @@ def get_video(msg):
         parse_mode="HTML"
     )
     
-    del user_states[user_id]
+    if user_id in user_states:
+        del user_states[user_id]
 
 # Serial anime uchun qism nomi qabul qilish
 @bot.message_handler(func=lambda message: message.from_user.id in user_states and user_states[message.from_user.id]['state'] == 'waiting_for_episode_name')
@@ -739,7 +760,8 @@ def get_episode_name(msg):
             f"🔗 <b>Link:</b> <code>{link}</code>",
             parse_mode="HTML"
         )
-        del user_states[user_id]
+        if user_id in user_states:
+            del user_states[user_id]
         return
         
     user_data['episode_name'] = msg.text
@@ -818,7 +840,8 @@ def get_new_admin(msg):
     
     if admin_id in admins:
         bot.send_message(msg.chat.id, "❌ <b>Bu admin allaqachon qo'shilgan!</b>", parse_mode="HTML")
-        del user_states[user_id]
+        if user_id in user_states:
+            del user_states[user_id]
         return
     
     try:
@@ -835,7 +858,8 @@ def get_new_admin(msg):
     except Exception as e:
         bot.send_message(msg.chat.id, f"❌ <b>Xato:</b> Foydalanuvchi topilmadi yoki botga yozmagan", parse_mode="HTML")
     
-    del user_states[user_id]
+    if user_id in user_states:
+        del user_states[user_id]
 
 # Admin o'chirish
 @bot.callback_query_handler(func=lambda call: call.data == 'remove_admin')
@@ -940,7 +964,8 @@ def get_new_channel(msg):
         for existing_channel in channels:
             if str(existing_channel) == str(chat.id):
                 bot.send_message(msg.chat.id, "❌ <b>Bu kanal allaqachon qo'shilgan!</b>", parse_mode="HTML")
-                del user_states[user_id]
+                if user_id in user_states:
+                    del user_states[user_id]
                 return
         
         channels.append(chat.id)
@@ -951,7 +976,8 @@ def get_new_channel(msg):
     except Exception as e:
         bot.send_message(msg.chat.id, f"❌ <b>Xato:</b> Kanal topilmadi yoki botda huquq yo'q! Iltimos, to'g'ri kanal ID yoki username kiriting.", parse_mode="HTML")
     
-    del user_states[user_id]
+    if user_id in user_states:
+        del user_states[user_id]
 
 # Kanal o'chirish
 @bot.callback_query_handler(func=lambda call: call.data == 'remove_channel')
