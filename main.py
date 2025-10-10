@@ -9,7 +9,7 @@ from fpdf import FPDF
 import datetime
 
 # ⚙️ Sozlamalar
-API_TOKEN = "8372994993:AAEv39v-5fQUmp1roPdorzKWRVH0ijG0ZVU"
+API_TOKEN = "8428253874:AAH1gMCyahs0c2rQnwTWAkNA20OXXXkpsqI"
 MAIN_ADMIN_ID = 5371043130
 JSON_FILE = "anime.json"
 ADMINS_FILE = "admins.json"
