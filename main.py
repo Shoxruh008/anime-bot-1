@@ -60,8 +60,21 @@ def check_subscription(user_id):
                 return False
         except Exception as e:
             logging.error(f"Kanal tekshirishda xato: {e}")
+            # Kanal topilmasa, uni ro'yxatdan o'chiramiz
+            remove_invalid_channel(channel)
             continue
     return True
+
+# Noto'g'ri kanalni o'chirish
+def remove_invalid_channel(channel_id):
+    try:
+        channels = load_data(CHANNELS_FILE)
+        if channel_id in channels:
+            channels.remove(channel_id)
+            save_data(channels, CHANNELS_FILE)
+            logging.info(f"Noto'g'ri kanal o'chirildi: {channel_id}")
+    except Exception as e:
+        logging.error(f"Kanal o'chirishda xato: {e}")
 
 # Asosiy menu
 def main_menu(user_id):
@@ -84,22 +97,20 @@ def main_menu(user_id):
     )
     return keyboard
 
-# PDF yaratish funksiyasi
+# PDF yaratish funksiyasi (fontsiz versiya)
 def create_anime_pdf():
     anime_data = load_data(JSON_FILE)
     
     pdf = FPDF()
     pdf.add_page()
-    pdf.add_font('DejaVu', '', 'DejaVuSansCondensed.ttf', uni=True)
-    pdf.set_font('DejaVu', '', 12)
     
     # Sarlavha
-    pdf.set_font('DejaVu', 'B', 16)
+    pdf.set_font('Arial', 'B', 16)
     pdf.cell(0, 10, 'Anime Lar Ro\'yxati', 0, 1, 'C')
     pdf.ln(5)
     
     # Sana va vaqt
-    pdf.set_font('DejaVu', '', 10)
+    pdf.set_font('Arial', '', 10)
     pdf.cell(0, 10, f"Yaratilgan sana: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}", 0, 1)
     pdf.ln(5)
     
@@ -112,17 +123,17 @@ def create_anime_pdf():
         else:
             total_episodes += 1
     
-    pdf.set_font('DejaVu', 'B', 12)
+    pdf.set_font('Arial', 'B', 12)
     pdf.cell(0, 10, f"Jami Anime: {total_anime}", 0, 1)
     pdf.cell(0, 10, f"Jami Qismlar: {total_episodes}", 0, 1)
     pdf.ln(10)
     
     # Har bir anime uchun ma'lumot
     for i, (code, anime) in enumerate(anime_data.items(), 1):
-        pdf.set_font('DejaVu', 'B', 14)
+        pdf.set_font('Arial', 'B', 14)
         pdf.cell(0, 10, f"{i}. {anime['title']}", 0, 1)
         
-        pdf.set_font('DejaVu', '', 10)
+        pdf.set_font('Arial', '', 10)
         pdf.cell(0, 8, f"Kod: {code}", 0, 1)
         
         # Start link
@@ -164,6 +175,8 @@ def start(msg):
     channels = load_data(CHANNELS_FILE)
     if channels and not check_subscription(user_id):
         keyboard = types.InlineKeyboardMarkup()
+        valid_channels = []
+        
         for channel in channels:
             try:
                 chat = bot.get_chat(channel)
@@ -174,9 +187,18 @@ def start(msg):
                     url = f"https://t.me/c/{str(chat.id)[4:]}" if str(chat.id).startswith('-100') else f"https://t.me/c/{chat.id}"
                 
                 keyboard.add(types.InlineKeyboardButton(f"{chat.title}", url=url))
+                valid_channels.append(channel)
             except Exception as e:
                 logging.error(f"Kanal ma'lumotlarini olishda xato: {e}")
+                # Noto'g'ri kanalni o'chiramiz
+                remove_invalid_channel(channel)
                 continue
+        
+        # Agar barcha kanallar noto'g'ri bo'lsa
+        if not valid_channels:
+            bot.send_message(msg.chat.id, "✅ <b>Obuna tekshirildi! Endi botdan foydalanishingiz mumkin.</b>", 
+                            reply_markup=main_menu(user_id), parse_mode="HTML")
+            return
         
         keyboard.add(types.InlineKeyboardButton("✅ Obuna bo'ldim", callback_data="check_subscription"))
         
@@ -339,6 +361,8 @@ def process_episode(call):
     channels = load_data(CHANNELS_FILE)
     if channels and not check_subscription(user_id):
         keyboard = types.InlineKeyboardMarkup()
+        valid_channels = []
+        
         for channel in channels:
             try:
                 chat = bot.get_chat(channel)
@@ -348,8 +372,19 @@ def process_episode(call):
                     url = f"https://t.me/c/{str(chat.id)[4:]}" if str(chat.id).startswith('-100') else f"https://t.me/c/{chat.id}"
                 
                 keyboard.add(types.InlineKeyboardButton(f"📢 {chat.title}", url=url))
+                valid_channels.append(channel)
             except:
+                # Noto'g'ri kanalni o'chiramiz
+                remove_invalid_channel(channel)
                 continue
+        
+        # Agar barcha kanallar noto'g'ri bo'lsa
+        if not valid_channels:
+            bot.delete_message(call.message.chat.id, call.message.message_id)
+            bot.send_message(call.message.chat.id, "✅ <b>Obuna tekshirildi! Endi botdan foydalanishingiz mumkin.</b>", 
+                            reply_markup=main_menu(user_id), parse_mode="HTML")
+            bot.answer_callback_query(call.id)
+            return
         
         keyboard.add(types.InlineKeyboardButton("✅ Obuna bo'ldim", callback_data="check_subscription"))
         
