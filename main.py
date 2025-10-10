@@ -75,7 +75,8 @@ def main_menu(user_id):
             types.InlineKeyboardButton("📢 Kanallar", callback_data="channel_manage")
         )
         keyboard.add(
-            types.InlineKeyboardButton("📋 Barcha animelar", callback_data="all_anime_list")
+            types.InlineKeyboardButton("📋 Barcha animelar", callback_data="all_anime_list"),
+            types.InlineKeyboardButton("🔄 Anime larni yangilash", callback_data="refresh_anime_menu")
         )
     
     keyboard.add(
@@ -141,7 +142,7 @@ def create_anime_pdf():
         pdf.cell(0, 8, f"Kod: {code}", 0, 1)
         
         # Start link
-        link = f"https://t.me/{bot.get_me().username}?start={code}"
+        link = f"https://t.me/AnirenXinata_bot?start={code}"
         pdf.cell(0, 8, f"Link: {link}", 0, 1)
         
         # Anime turi va qismlar soni
@@ -290,11 +291,166 @@ def start(msg):
             return
 
         anime = data[args]
-        if "episodes" in anime:  # Ko'p qismli anime
-            # Sahifalangan ro'yxatni ko'rsatish (0-sahifa)
-            show_episodes_page(msg.chat.id, anime, args, 0, msg.message_id)
-        else:  # Bitta anime
-            bot.send_video(msg.chat.id, anime["file_id"], caption=f"<b>🎌 {anime['title']}</b>", parse_mode="HTML")
+        
+        # File_id ni tekshirish
+        try:
+            if "episodes" in anime:  # Ko'p qismli anime
+                # Sahifalangan ro'yxatni ko'rsatish (0-sahifa)
+                show_episodes_page(msg.chat.id, anime, args, 0, msg.message_id)
+            else:  # Bitta anime
+                bot.send_video(msg.chat.id, anime["file_id"], caption=f"<b>🎌 {anime['title']}</b>", parse_mode="HTML")
+        except Exception as e:
+            logging.error(f"Video yuborishda xato: {e}")
+            bot.send_message(msg.chat.id, f"❌ <b>Xato:</b> Video yuborishda muammo yuz berdi. Iltimos, anime ni qayta yuklang.", parse_mode="HTML")
+
+# Foydalanuvchi holatlari
+user_states = {}
+
+# Anime yangilash menyusi
+@bot.callback_query_handler(func=lambda call: call.data == 'refresh_anime_menu')
+def refresh_anime_menu_callback(call):
+    user_id = call.from_user.id
+    if not check_user(user_id):
+        bot.answer_callback_query(call.id, "❌ Sizda bunday huquq yo'q!", show_alert=True)
+        return
+    
+    anime_data = load_data(JSON_FILE)
+    
+    if not anime_data:
+        bot.send_message(call.message.chat.id, "❌ <b>Hozircha animelar mavjud emas.</b>", parse_mode="HTML")
+        return
+    
+    keyboard = types.InlineKeyboardMarkup(row_width=1)
+    
+    for code, anime in anime_data.items():
+        anime_type = "📺 Serial" if "episodes" in anime else "🎬 Film"
+        keyboard.add(types.InlineKeyboardButton(
+            f"{anime_type} | {anime['title']}", 
+            callback_data=f"refresh_{code}"
+        ))
+    
+    keyboard.add(types.InlineKeyboardButton("🔙 Orqaga", callback_data="main_menu"))
+    
+    bot.send_message(
+        call.message.chat.id,
+        "🔄 <b>Anime yangilash</b>\n\n"
+        "Qaysi anime ni yangilamoqchisiz?",
+        reply_markup=keyboard,
+        parse_mode="HTML"
+    )
+    bot.answer_callback_query(call.id)
+
+# Anime ni yangilashni boshlash
+@bot.callback_query_handler(func=lambda call: call.data.startswith('refresh_'))
+def start_refresh_anime(call):
+    user_id = call.from_user.id
+    if not check_user(user_id):
+        bot.answer_callback_query(call.id, "❌ Sizda bunday huquq yo'q!", show_alert=True)
+        return
+    
+    anime_code = call.data.replace('refresh_', '')
+    anime_data = load_data(JSON_FILE)
+    
+    if anime_code not in anime_data:
+        bot.answer_callback_query(call.id, "❌ Anime topilmadi!", show_alert=True)
+        return
+    
+    anime = anime_data[anime_code]
+    
+    # Foydalanuvchi holatini sozlash
+    user_states[user_id] = {
+        'state': 'refreshing_anime',
+        'anime_code': anime_code,
+        'anime_title': anime['title'],
+        'is_series': 'episodes' in anime,
+        'current_episode_index': 0
+    }
+    
+    if "episodes" in anime:
+        # Serial anime
+        episodes_count = len(anime["episodes"])
+        bot.send_message(
+            call.message.chat.id,
+            f"🔄 <b>{anime['title']}</b> serialini yangilash\n\n"
+            f"📺 Jami {episodes_count} qism\n\n"
+            f"1-qism uchun video yuboring:",
+            parse_mode="HTML"
+        )
+    else:
+        # Bitta anime
+        bot.send_message(
+            call.message.chat.id,
+            f"🔄 <b>{anime['title']}</b> filmini yangilash\n\n"
+            f"Video yuboring:",
+            parse_mode="HTML"
+        )
+    
+    bot.answer_callback_query(call.id)
+
+# Yangilash uchun video qabul qilish
+@bot.message_handler(content_types=['video'], func=lambda message: message.from_user.id in user_states and user_states[message.from_user.id]['state'] == 'refreshing_anime')
+def refresh_anime_video(msg):
+    user_id = msg.from_user.id
+    user_data = user_states[user_id]
+    anime_code = user_data['anime_code']
+    file_id = msg.video.file_id
+    
+    anime_data = load_data(JSON_FILE)
+    
+    if anime_code not in anime_data:
+        bot.send_message(msg.chat.id, "❌ <b>Anime topilmadi!</b>", parse_mode="HTML")
+        del user_states[user_id]
+        return
+    
+    anime = anime_data[anime_code]
+    
+    if user_data['is_series']:
+        # Serial anime yangilash
+        current_index = user_data['current_episode_index']
+        episodes = anime["episodes"]
+        
+        if current_index < len(episodes):
+            # Joriy qismni yangilash
+            episodes[current_index]["file_id"] = file_id
+            
+            # Keyingi qismga o'tish
+            user_data['current_episode_index'] += 1
+            
+            if user_data['current_episode_index'] < len(episodes):
+                # Keyingi qismni so'rash
+                next_episode = episodes[user_data['current_episode_index']]
+                bot.send_message(
+                    msg.chat.id,
+                    f"✅ <b>{episodes[current_index]['episode']}</b> yangilandi!\n\n"
+                    f"Keyingi qism: <b>{next_episode['episode']}</b>\n"
+                    f"Video yuboring:",
+                    parse_mode="HTML"
+                )
+            else:
+                # Barcha qismlar yangilandi
+                save_data(anime_data, JSON_FILE)
+                bot.send_message(
+                    msg.chat.id,
+                    f"✅ <b>{anime['title']}</b> seriali muvaffaqiyatli yangilandi!\n\n"
+                    f"📺 Jami {len(episodes)} qism yangilandi",
+                    parse_mode="HTML"
+                )
+                del user_states[user_id]
+        else:
+            bot.send_message(msg.chat.id, "❌ <b>Barcha qismlar yangilandi!</b>", parse_mode="HTML")
+            del user_states[user_id]
+    
+    else:
+        # Bitta anime yangilash
+        anime["file_id"] = file_id
+        save_data(anime_data, JSON_FILE)
+        
+        bot.send_message(
+            msg.chat.id,
+            f"✅ <b>{anime['title']}</b> filmi muvaffaqiyatli yangilandi!",
+            parse_mode="HTML"
+        )
+        del user_states[user_id]
 
 # Barcha animelar ro'yxati (PDF)
 @bot.callback_query_handler(func=lambda call: call.data == 'all_anime_list')
@@ -346,7 +502,7 @@ def send_text_anime_list(chat_id):
     text = "📚 <b>Barcha Animelar Ro'yxati</b>\n\n"
     
     for i, (code, anime) in enumerate(anime_data.items(), 1):
-        link = f"https://t.me/{bot.get_me().username}?start={code}"
+        link = f"https://t.me/AnirenXinata_bot?start={code}"
         
         text += f"<b>{i}. {anime['title']}</b>\n"
         text += f"   🆔 <code>{code}</code>\n"
@@ -500,9 +656,6 @@ def main_menu_callback(call):
                     reply_markup=main_menu(call.from_user.id), parse_mode="HTML")
     bot.answer_callback_query(call.id)
 
-# Foydalanuvchi holatlari
-user_states = {}
-
 # Bitta anime qo'shish
 @bot.callback_query_handler(func=lambda call: call.data == 'add_single')
 def add_single_callback(call):
@@ -557,7 +710,7 @@ def get_video(msg):
     }
     save_data(anime_data, JSON_FILE)
 
-    link = f"https://t.me/{bot.get_me().username}?start={code}"
+    link = f"https://t.me/AnirenXinata_bot?start={code}"
     bot.send_message(
         msg.chat.id,
         f"✅ <b>Anime muvaffaqiyatli qo'shildi!</b>\n\n"
@@ -578,7 +731,7 @@ def get_episode_name(msg):
         title = user_data['title']
         code = str(abs(hash(title)))[:8]
         
-        link = f"https://t.me/{bot.get_me().username}?start={code}"
+        link = f"https://t.me/AnirenXinata_bot?start={code}"
         bot.send_message(
             msg.chat.id,
             f"✅ <b>Serial muvaffaqiyatli saqlandi!</b>\n\n"
@@ -894,4 +1047,5 @@ def stats_callback(call):
 
 if __name__ == "__main__":
     print("Bot ishga tushdi...")
+    print(f"Bot username: {bot.get_me().username}")
     bot.infinity_polling()
