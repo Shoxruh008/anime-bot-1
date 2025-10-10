@@ -9,7 +9,7 @@ from fpdf import FPDF
 import datetime
 
 # ⚙️ Sozlamalar
-API_TOKEN = "8428253874:AAH1gMCyahs0c2rQnwTWAkNA20OXXXkpsqI"
+API_TOKEN = "8372994993:AAEv39v-5fQUmp1roPdorzKWRVH0ijG0ZVU"
 MAIN_ADMIN_ID = 5371043130
 JSON_FILE = "anime.json"
 ADMINS_FILE = "admins.json"
@@ -60,21 +60,8 @@ def check_subscription(user_id):
                 return False
         except Exception as e:
             logging.error(f"Kanal tekshirishda xato: {e}")
-            # Kanal topilmasa, uni ro'yxatdan o'chiramiz
-            remove_invalid_channel(channel)
             continue
     return True
-
-# Noto'g'ri kanalni o'chirish
-def remove_invalid_channel(channel_id):
-    try:
-        channels = load_data(CHANNELS_FILE)
-        if channel_id in channels:
-            channels.remove(channel_id)
-            save_data(channels, CHANNELS_FILE)
-            logging.info(f"Noto'g'ri kanal o'chirildi: {channel_id}")
-    except Exception as e:
-        logging.error(f"Kanal o'chirishda xato: {e}")
 
 # Asosiy menu
 def main_menu(user_id):
@@ -101,26 +88,10 @@ def main_menu(user_id):
 def clean_text_for_pdf(text):
     """Matndagi maxsus belgilarni oddiy belgilarga almashtirish"""
     replacements = {
-        'ʻ': "'",
-        'ʼ': "'",
-        '‘': "'",
-        '’': "'",
-        '`': "'",
-        'ʻ': "'",
-        'ʼ': "'",
-        '´': "'",
-        'ʹ': "'",
-        'ʺ': '"',
-        '«': '"',
-        '»': '"',
-        '„': '"',
-        '“': '"',
-        '”': '"',
-        '–': '-',
-        '—': '-',
-        '…': '...',
-        '‘': "'",
-        '’': "'"
+        'ʻ': "'", 'ʼ': "'", '‘': "'", '’': "'", '`': "'",
+        '´': "'", 'ʹ': "'", 'ʺ': '"', '«': '"', '»': '"',
+        '„': '"', '“': '"', '”': '"', '–': '-', '—': '-',
+        '…': '...'
     }
     
     for old, new in replacements.items():
@@ -128,7 +99,7 @@ def clean_text_for_pdf(text):
     
     return text
 
-# PDF yaratish funksiyasi (UTF-8 muammosiz versiya)
+# PDF yaratish funksiyasi
 def create_anime_pdf():
     anime_data = load_data(JSON_FILE)
     
@@ -161,7 +132,6 @@ def create_anime_pdf():
     
     # Har bir anime uchun ma'lumot
     for i, (code, anime) in enumerate(anime_data.items(), 1):
-        # Matnlarni to'g'rilash
         clean_title = clean_text_for_pdf(anime['title'])
         
         pdf.set_font('Arial', 'B', 14)
@@ -177,15 +147,6 @@ def create_anime_pdf():
         # Anime turi va qismlar soni
         if "episodes" in anime:
             pdf.cell(0, 8, f"Turi: Serial (Jami {len(anime['episodes'])} qism)", 0, 1)
-            # Qismlar ro'yxati
-            pdf.cell(0, 8, "Qismlar:", 0, 1)
-            for j, episode in enumerate(anime["episodes"][:10], 1):  # Faqat first 10 qism
-                clean_episode = clean_text_for_pdf(episode['episode'])
-                pdf.cell(10, 6, "", 0, 0)  # Indent
-                pdf.cell(0, 6, f"{j}. {clean_episode}", 0, 1)
-            if len(anime["episodes"]) > 10:
-                pdf.cell(10, 6, "", 0, 0)
-                pdf.cell(0, 6, f"... va yana {len(anime['episodes']) - 10} qism", 0, 1)
         else:
             pdf.cell(0, 8, "Turi: Bitta anime", 0, 1)
         
@@ -195,80 +156,9 @@ def create_anime_pdf():
         if i % 3 == 0 and i != len(anime_data):
             pdf.add_page()
     
-    # Fayl nomi
     filename = f"anime_list_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
-    pdf.output(filename, 'F')  # 'F' - faylga yozish
+    pdf.output(filename, 'F')
     return filename
-
-# 📌 /start
-@bot.message_handler(commands=["start"])
-def start(msg):
-    user_id = msg.from_user.id
-    user_name = msg.from_user.first_name
-    
-    # Obunani tekshirish
-    channels = load_data(CHANNELS_FILE)
-    if channels and not check_subscription(user_id):
-        keyboard = types.InlineKeyboardMarkup()
-        valid_channels = []
-        
-        for channel in channels:
-            try:
-                chat = bot.get_chat(channel)
-                if chat.username:
-                    url = f"https://t.me/{chat.username}"
-                else:
-                    # Agar kanalda username bo'lmasa
-                    url = f"https://t.me/c/{str(chat.id)[4:]}" if str(chat.id).startswith('-100') else f"https://t.me/c/{chat.id}"
-                
-                keyboard.add(types.InlineKeyboardButton(f"{chat.title}", url=url))
-                valid_channels.append(channel)
-            except Exception as e:
-                logging.error(f"Kanal ma'lumotlarini olishda xato: {e}")
-                # Noto'g'ri kanalni o'chiramiz
-                remove_invalid_channel(channel)
-                continue
-        
-        # Agar barcha kanallar noto'g'ri bo'lsa
-        if not valid_channels:
-            bot.send_message(msg.chat.id, "✅ <b>Obuna tekshirildi! Endi botdan foydalanishingiz mumkin.</b>", 
-                            reply_markup=main_menu(user_id), parse_mode="HTML")
-            return
-        
-        keyboard.add(types.InlineKeyboardButton("✅ Obuna bo'ldim", callback_data="check_subscription"))
-        
-        bot.send_message(
-            msg.chat.id, 
-            "🤖 Botdan foydalanish uchun quyidagi kanal(lar)ga obuna bo'ling:", 
-            reply_markup=keyboard
-        )
-        return
-    
-    args = msg.text.split()[1] if len(msg.text.split()) > 1 else None
-    if not args:
-        welcome_text = (
-            f"👋 Salom, {user_name} Aniren Xinata Botiga Xush Kelibsiz!\n\n"
-            "📺 Bu bot orqali siz turli animelarni professional dublajda tomosha qilishingiz mumkin.\n\n"
-            "🔗 Animelarni tomosha qilish uchun esa asosiy kanaldan anime tanlab keling."
-        )
-        bot.send_message(
-            msg.chat.id,
-            welcome_text,
-            reply_markup=main_menu(user_id),
-            parse_mode="HTML"
-        )
-    else:
-        data = load_data(JSON_FILE)
-        if args not in data:
-            bot.send_message(msg.chat.id, "❌ <b>Bunday anime topilmadi.</b>", parse_mode="HTML")
-            return
-
-        anime = data[args]
-        if "episodes" in anime:  # Ko'p qismli anime
-            # Sahifalangan ro'yxatni ko'rsatish (0-sahifa)
-            show_episodes_page(msg.chat.id, anime, args, 0, msg.message_id)
-        else:  # Bitta anime
-            bot.send_video(msg.chat.id, anime["file_id"], caption=f"<b>🎌 {anime['title']}</b>", parse_mode="HTML")
 
 # Sahifalangan qismlarni ko'rsatish
 def show_episodes_page(chat_id, anime, anime_code, page=0, message_id=None):
@@ -333,7 +223,6 @@ def show_episodes_page(chat_id, anime, anime_code, page=0, message_id=None):
             f"Quyidagi qismlardan birini tanlang:")
     
     if message_id:
-        # Mavjud xabarni yangilash
         bot.edit_message_text(
             text,
             chat_id,
@@ -342,7 +231,6 @@ def show_episodes_page(chat_id, anime, anime_code, page=0, message_id=None):
             parse_mode="HTML"
         )
     else:
-        # Yangi xabar yuborish
         bot.send_message(
             chat_id,
             text,
@@ -350,7 +238,65 @@ def show_episodes_page(chat_id, anime, anime_code, page=0, message_id=None):
             parse_mode="HTML"
         )
 
-# Barcha animelar ro'yxati
+# 📌 /start
+@bot.message_handler(commands=["start"])
+def start(msg):
+    user_id = msg.from_user.id
+    user_name = msg.from_user.first_name
+    
+    # Obunani tekshirish
+    channels = load_data(CHANNELS_FILE)
+    if channels and not check_subscription(user_id):
+        keyboard = types.InlineKeyboardMarkup()
+        for channel in channels:
+            try:
+                chat = bot.get_chat(channel)
+                if chat.username:
+                    url = f"https://t.me/{chat.username}"
+                else:
+                    url = f"https://t.me/c/{str(chat.id)[4:]}" if str(chat.id).startswith('-100') else f"https://t.me/c/{chat.id}"
+                
+                keyboard.add(types.InlineKeyboardButton(f"{chat.title}", url=url))
+            except Exception as e:
+                logging.error(f"Kanal ma'lumotlarini olishda xato: {e}")
+                continue
+        
+        keyboard.add(types.InlineKeyboardButton("✅ Obuna bo'ldim", callback_data="check_subscription"))
+        
+        bot.send_message(
+            msg.chat.id, 
+            "🤖 Botdan foydalanish uchun quyidagi kanal(lar)ga obuna bo'ling:", 
+            reply_markup=keyboard
+        )
+        return
+    
+    args = msg.text.split()[1] if len(msg.text.split()) > 1 else None
+    if not args:
+        welcome_text = (
+            f"👋 Salom, {user_name} Aniren Xinata Botiga Xush Kelibsiz!\n\n"
+            "📺 Bu bot orqali siz turli animelarni professional dublajda tomosha qilishingiz mumkin.\n\n"
+            "🔗 Animelarni tomosha qilish uchun esa asosiy kanaldan anime tanlab keling."
+        )
+        bot.send_message(
+            msg.chat.id,
+            welcome_text,
+            reply_markup=main_menu(user_id),
+            parse_mode="HTML"
+        )
+    else:
+        data = load_data(JSON_FILE)
+        if args not in data:
+            bot.send_message(msg.chat.id, "❌ <b>Bunday anime topilmadi.</b>", parse_mode="HTML")
+            return
+
+        anime = data[args]
+        if "episodes" in anime:  # Ko'p qismli anime
+            # Sahifalangan ro'yxatni ko'rsatish (0-sahifa)
+            show_episodes_page(msg.chat.id, anime, args, 0, msg.message_id)
+        else:  # Bitta anime
+            bot.send_video(msg.chat.id, anime["file_id"], caption=f"<b>🎌 {anime['title']}</b>", parse_mode="HTML")
+
+# Barcha animelar ro'yxati (PDF)
 @bot.callback_query_handler(func=lambda call: call.data == 'all_anime_list')
 def all_anime_list_callback(call):
     user_id = call.from_user.id
@@ -359,11 +305,9 @@ def all_anime_list_callback(call):
         return
     
     try:
-        # PDF yaratish
         bot.send_message(call.message.chat.id, "📋 <b>PDF fayl yaratilmoqda...</b>", parse_mode="HTML")
         pdf_filename = create_anime_pdf()
         
-        # PDF ni yuborish
         with open(pdf_filename, 'rb') as pdf_file:
             bot.send_document(
                 call.message.chat.id,
@@ -379,16 +323,15 @@ def all_anime_list_callback(call):
                 parse_mode="HTML"
             )
         
-        # PDF faylni o'chirish
         os.remove(pdf_filename)
         
     except Exception as e:
         logging.error(f"PDF yaratishda xato: {e}")
-        # Oddiy text formatda ro'yxat yuborish
+        # Agar PDF yaratishda xato bo'lsa, oddiy text formatda yuborish
         try:
             send_text_anime_list(call.message.chat.id)
         except Exception as e2:
-            bot.send_message(call.message.chat.id, f"❌ <b>Xato:</b> Ro'yxat yaratishda muammo yuz berdi: {str(e)}", parse_mode="HTML")
+            bot.send_message(call.message.chat.id, f"❌ <b>Xato:</b> Ro'yxat yaratishda muammo yuz berdi.", parse_mode="HTML")
     
     bot.answer_callback_query(call.id)
 
@@ -416,12 +359,10 @@ def send_text_anime_list(chat_id):
         
         text += "\n"
         
-        # Har 10 anime dan keyin yangi xabar
         if i % 10 == 0:
             bot.send_message(chat_id, text, parse_mode="HTML")
             text = ""
     
-    # Qolgan animelarni yuborish
     if text:
         bot.send_message(chat_id, text, parse_mode="HTML")
 
@@ -433,8 +374,6 @@ def process_episode(call):
     channels = load_data(CHANNELS_FILE)
     if channels and not check_subscription(user_id):
         keyboard = types.InlineKeyboardMarkup()
-        valid_channels = []
-        
         for channel in channels:
             try:
                 chat = bot.get_chat(channel)
@@ -444,19 +383,8 @@ def process_episode(call):
                     url = f"https://t.me/c/{str(chat.id)[4:]}" if str(chat.id).startswith('-100') else f"https://t.me/c/{chat.id}"
                 
                 keyboard.add(types.InlineKeyboardButton(f"📢 {chat.title}", url=url))
-                valid_channels.append(channel)
             except:
-                # Noto'g'ri kanalni o'chiramiz
-                remove_invalid_channel(channel)
                 continue
-        
-        # Agar barcha kanallar noto'g'ri bo'lsa
-        if not valid_channels:
-            bot.delete_message(call.message.chat.id, call.message.message_id)
-            bot.send_message(call.message.chat.id, "✅ <b>Obuna tekshirildi! Endi botdan foydalanishingiz mumkin.</b>", 
-                            reply_markup=main_menu(user_id), parse_mode="HTML")
-            bot.answer_callback_query(call.id)
-            return
         
         keyboard.add(types.InlineKeyboardButton("✅ Obuna bo'ldim", callback_data="check_subscription"))
         
@@ -741,13 +669,11 @@ def get_new_admin(msg):
         return
     
     try:
-        # PyTelegramBotAPI da get_chat ishlamaydi, shuning uchun boshqa usul
         admins[admin_id] = f"User {admin_id}"
         save_data(admins, ADMINS_FILE)
         
         bot.send_message(msg.chat.id, f"✅ <b>Yangi admin qo'shildi:</b>\n\n👤 User\n🆔 <code>{admin_id}</code>", parse_mode="HTML")
         
-        # Yangi adminga xabar yuborish
         try:
             bot.send_message(admin_id, "🎉 <b>Siz admin sifatida tayinlandingiz!</b>", parse_mode="HTML")
         except:
@@ -788,7 +714,6 @@ def process_remove_admin(call):
         
         bot.send_message(call.message.chat.id, f"✅ <b>Admin o'chirildi:</b>\n\n👤 {removed_name}\n🆔 <code>{admin_id}</code>", parse_mode="HTML")
         
-        # O'chirilgan adminga xabar yuborish
         try:
             bot.send_message(admin_id, "❌ <b>Sizning admin huquqingiz olib tashlandi.</b>", parse_mode="HTML")
         except:
@@ -851,24 +776,20 @@ def get_new_channel(msg):
     user_id = msg.from_user.id
     channel_input = msg.text.strip()
     
-    # @ belgisini olib tashlash
     if channel_input.startswith('@'):
         channel_input = channel_input[1:]
     
     channels = load_data(CHANNELS_FILE)
     
     try:
-        # Kanalni tekshirish
         chat = bot.get_chat(channel_input)
         
-        # Kanal allaqachon qo'shilganligini tekshirish
         for existing_channel in channels:
             if str(existing_channel) == str(chat.id):
                 bot.send_message(msg.chat.id, "❌ <b>Bu kanal allaqachon qo'shilgan!</b>", parse_mode="HTML")
                 del user_states[user_id]
                 return
         
-        # Kanalni qo'shish
         channels.append(chat.id)
         save_data(channels, CHANNELS_FILE)
         
@@ -891,7 +812,6 @@ def remove_channel_callback(call):
     for channel_id in channels:
         try:
             chat = bot.get_chat(channel_id)
-            # Callback data sifatida kanal ID sini string formatda saqlaymiz
             keyboard.add(types.InlineKeyboardButton(f"📢 {chat.title}", callback_data=f"remove_ch_{channel_id}"))
         except:
             keyboard.add(types.InlineKeyboardButton(f"📢 {channel_id}", callback_data=f"remove_ch_{channel_id}"))
@@ -907,14 +827,12 @@ def process_remove_channel(call):
     channel_id_to_remove = call.data.replace('remove_ch_', '')
     channels = load_data(CHANNELS_FILE)
     
-    # Kanal ID sini int ga o'tkazish (agar mumkin bo'lsa)
     try:
         if channel_id_to_remove.isdigit() or (channel_id_to_remove.startswith('-') and channel_id_to_remove[1:].isdigit()):
             channel_id_to_remove = int(channel_id_to_remove)
     except:
         pass
     
-    # Kanalni topish va o'chirish
     new_channels = []
     removed_channel = None
     
@@ -935,7 +853,6 @@ def process_remove_channel(call):
             
         bot.send_message(call.message.chat.id, f"✅ <b>Kanal o'chirildi:</b>\n\n📢 {channel_name}\n🆔 <code>{removed_channel}</code>", parse_mode="HTML")
         
-        # Kanal boshqaruv menyusiga qaytish
         bot.delete_message(call.message.chat.id, call.message.message_id)
         channel_manage_callback(call)
     else:
