@@ -1266,6 +1266,7 @@ def process_remove_channel(call):
         
     channel_id_to_remove = call.data.replace('remove_ch_', '')
     channels = load_data(CHANNELS_FILE)
+    #test
     
     try:
         if channel_id_to_remove.isdigit() or (channel_id_to_remove.startswith('-') and channel_id_to_remove[1:].isdigit()):
