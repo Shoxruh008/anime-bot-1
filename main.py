@@ -431,28 +431,16 @@ def get_new_title(msg):
             del user_states[user_id]
         return
     
-    # Eski ma'lumotlarni saqlab qolish
-    old_anime = anime_data[anime_code]
-    
-    # Yangi kod yaratish
-    new_code = str(abs(hash(new_title)))[:8]
-    
-    # Yangi kod bilan saqlash
-    anime_data[new_code] = old_anime
-    anime_data[new_code]['title'] = new_title
-    
-    # Eski kodni o'chirish
-    if new_code != anime_code:
-        del anime_data[anime_code]
-    
+    # Faqat nomni o'zgartiramiz, kod va start linki o'zgarmaydi
+    anime_data[anime_code]['title'] = new_title
     save_data(anime_data, JSON_FILE)
     
     bot.send_message(
         msg.chat.id,
         f"✅ <b>Anime nomi muvaffaqiyatli o'zgartirildi!</b>\n\n"
         f"🎬 <b>Yangi nom:</b> {new_title}\n"
-        f"🆔 <b>Yangi kod:</b> <code>{new_code}</code>\n"
-        f"🔗 <b>Yangi link:</b> <code>https://t.me/AnirenXinata_bot?start={new_code}</code>",
+        f"🆔 <b>Kod:</b> <code>{anime_code}</code>\n"
+        f"🔗 <b>Link:</b> <code>https://t.me/AnirenXinata_bot?start={anime_code}</code>",
         parse_mode="HTML"
     )
     
