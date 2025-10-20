@@ -1145,7 +1145,8 @@ def process_remove_admin(call):
 @bot.callback_query_handler(func=lambda call: call.data == 'channel_manage')
 def channel_manage_callback(call):
     user_id = call.from_user.id
-    if not check_user(user_id):
+    # Asosiy admin va adminlar ro'yxatidagi foydalanuvchilar uchun ruxsat
+    if user_id != MAIN_ADMIN_ID and not check_user(user_id):
         bot.answer_callback_query(call.id, "❌ Sizda bunday huquq yo'q!", show_alert=True)
         return
     
@@ -1168,7 +1169,7 @@ def channel_manage_callback(call):
     if not channel_list:
         channel_list = "Hozircha kanallar mavjud emas"
     
-    bot.edit_message_text(  # ⬅️ send_message o'rniga edit_message_text
+    bot.edit_message_text(
         f"📢 <b>Majburiy obuna kanallari</b>\n\n{channel_list}", 
         call.message.chat.id,
         call.message.message_id,
@@ -1221,9 +1222,15 @@ def get_new_channel(msg):
     if user_id in user_states:
         del user_states[user_id]
 
-# Kanal o'chirish
+# Kanal o'chirish menyusi
 @bot.callback_query_handler(func=lambda call: call.data == 'remove_channel')
 def remove_channel_callback(call):
+    user_id = call.from_user.id
+    # Asosiy admin va adminlar ro'yxatidagi foydalanuvchilar uchun ruxsat
+    if user_id != MAIN_ADMIN_ID and not check_user(user_id):
+        bot.answer_callback_query(call.id, "❌ Sizda bunday huquq yo'q!", show_alert=True)
+        return
+    
     channels = load_data(CHANNELS_FILE)
     if not channels:
         bot.answer_callback_query(call.id, "❌ Hozircha kanallar mavjud emas!", show_alert=True)
@@ -1239,14 +1246,21 @@ def remove_channel_callback(call):
     
     keyboard.add(types.InlineKeyboardButton("🔙 Orqaga", callback_data="channel_manage"))
     
-    bot.send_message(call.message.chat.id, "➖ <b>O'chirish uchun kanalni tanlang:</b>", reply_markup=keyboard, parse_mode="HTML")
+    bot.edit_message_text(
+        "➖ <b>O'chirish uchun kanalni tanlang:</b>", 
+        call.message.chat.id,
+        call.message.message_id,
+        reply_markup=keyboard, 
+        parse_mode="HTML"
+    )
     bot.answer_callback_query(call.id)
 
 # Kanalni o'chirish
 @bot.callback_query_handler(func=lambda call: call.data.startswith('remove_ch_'))
 def process_remove_channel(call):
     user_id = call.from_user.id
-    if not check_user(user_id):
+    # Asosiy admin va adminlar ro'yxatidagi foydalanuvchilar uchun ruxsat
+    if user_id != MAIN_ADMIN_ID and not check_user(user_id):
         bot.answer_callback_query(call.id, "❌ Sizda bunday huquq yo'q!", show_alert=True)
         return
         
@@ -1277,15 +1291,17 @@ def process_remove_channel(call):
         except:
             channel_name = removed_channel
             
-        # Eski xabarni o'chirib, yangi menyu yuboramiz
-        try:
-            bot.delete_message(call.message.chat.id, call.message.message_id)
-        except:
-            pass
-            
-        bot.send_message(call.message.chat.id, f"✅ <b>Kanal o'chirildi:</b>\n\n📢 {channel_name}\n🆔 <code>{removed_channel}</code>", parse_mode="HTML")
+        # Xabarni yangilash
+        bot.edit_message_text(
+            f"✅ <b>Kanal o'chirildi:</b>\n\n📢 {channel_name}\n🆔 <code>{removed_channel}</code>", 
+            call.message.chat.id,
+            call.message.message_id,
+            parse_mode="HTML"
+        )
         
-        # Kanal boshqaruv menyusini qayta ko'rsatamiz
+        # 2 soniyadan so'ng kanal boshqaruv menyusiga qaytish
+        import time
+        time.sleep(2)
         channel_manage_callback(call)
     else:
         bot.answer_callback_query(call.id, "❌ Kanal topilmadi!", show_alert=True)
