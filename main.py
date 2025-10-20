@@ -364,7 +364,7 @@ def start_edit_anime(call):
         # Serial anime
         keyboard.add(
             types.InlineKeyboardButton("✏️ Nomi", callback_data=f"edit_title_{anime_code}"),
-            types.InlineKeyboardButton("📺 Qismlar soni", callback_data=f"edit_episodes_{anime_code}")
+            types.InlineKeyboardButton("📺 Qism qo'shish", callback_data=f"add_episodes_{anime_code}")
         )
     else:
         # Bitta anime
@@ -421,154 +421,147 @@ def get_new_title(msg):
     user_id = msg.from_user.id
     user_data = user_states[user_id]
     anime_code = user_data['anime_code']
-    new_title = msg.text.strip()
-
+    new_title = msg.text
+    
     anime_data = load_data(JSON_FILE)
     
     if anime_code not in anime_data:
         bot.send_message(msg.chat.id, "❌ <b>Anime topilmadi!</b>", parse_mode="HTML")
-        user_states.pop(user_id, None)
+        if user_id in user_states:
+            del user_states[user_id]
         return
-
-    anime_data[anime_code]['title'] = new_title
+    
+    # Eski ma'lumotlarni saqlab qolish
+    old_anime = anime_data[anime_code]
+    
+    # Yangi kod yaratish
+    new_code = str(abs(hash(new_title)))[:8]
+    
+    # Yangi kod bilan saqlash
+    anime_data[new_code] = old_anime
+    anime_data[new_code]['title'] = new_title
+    
+    # Eski kodni o'chirish
+    if new_code != anime_code:
+        del anime_data[anime_code]
+    
     save_data(anime_data, JSON_FILE)
-
+    
     bot.send_message(
         msg.chat.id,
-        f"✅ <b>Anime nomi muvaffaqiyatli o‘zgartirildi!</b>\n\n"
+        f"✅ <b>Anime nomi muvaffaqiyatli o'zgartirildi!</b>\n\n"
         f"🎬 <b>Yangi nom:</b> {new_title}\n"
-        f"🆔 <b>Kod:</b> <code>{anime_code}</code>\n"
-        f"🔗 <b>Link:</b> <code>https://t.me/AnirenXinata_bot?start={anime_code}</code>",
+        f"🆔 <b>Yangi kod:</b> <code>{new_code}</code>\n"
+        f"🔗 <b>Yangi link:</b> <code>https://t.me/AnirenXinata_bot?start={new_code}</code>",
         parse_mode="HTML"
     )
+    
+    if user_id in user_states:
+        del user_states[user_id]
 
-    user_states.pop(user_id, None)
-
-# Serial uchun qismlar sonini tahrirlash
-@bot.callback_query_handler(func=lambda call: call.data.startswith('edit_episodes_'))
-def edit_episodes_count(call):
+# Serial uchun qism qo'shish
+@bot.callback_query_handler(func=lambda call: call.data.startswith('add_episodes_'))
+def add_episodes(call):
     user_id = call.from_user.id
     if not check_user(user_id):
-        bot.answer_callback_query(call.id, "❌ Sizda bunday huquq yo‘q!", show_alert=True)
+        bot.answer_callback_query(call.id, "❌ Sizda bunday huquq yo'q!", show_alert=True)
         return
-
-    anime_code = call.data.replace('edit_episodes_', '')
+    
+    anime_code = call.data.replace('add_episodes_', '')
     anime_data = load_data(JSON_FILE)
-
+    
     if anime_code not in anime_data or "episodes" not in anime_data[anime_code]:
         bot.answer_callback_query(call.id, "❌ Serial topilmadi!", show_alert=True)
         return
-
-    anime = anime_data[anime_code]
-    current_episodes = len(anime["episodes"])
-
+    
     user_states[user_id] = {
-        'state': 'editing_episodes',
-        'anime_code': anime_code,
-        'current_episodes': current_episodes
+        'state': 'adding_episodes_count',
+        'anime_code': anime_code
     }
-
+    
     bot.send_message(
         call.message.chat.id,
-        f"📺 <b>Qismlar sonini tahrirlash</b>\n\n"
-        f"🎬 Anime: <b>{anime['title']}</b>\n"
-        f"📊 Joriy qismlar soni: <b>{current_episodes}</b>\n\n"
-        f"Yangi qismlar sonini kiriting (kamida {current_episodes}):",
+        f"📺 <b>Yangi qism qo'shish</b>\n\n"
+        f"Nechta yangi qism qo'shmoqchisiz? Raqamda yuboring:",
         parse_mode="HTML"
     )
     bot.answer_callback_query(call.id)
 
-# Qismlar sonini qabul qilish
-@bot.message_handler(func=lambda message: message.from_user.id in user_states and user_states[message.from_user.id]['state'] == 'editing_episodes')
-def get_new_episodes_count(msg):
+# Qo'shiladigan qismlar sonini qabul qilish
+@bot.message_handler(func=lambda message: message.from_user.id in user_states and user_states[message.from_user.id]['state'] == 'adding_episodes_count')
+def get_episodes_to_add_count(msg):
     user_id = msg.from_user.id
-    data = user_states[user_id]
-    anime_code = data['anime_code']
-    current_episodes = data['current_episodes']
-
+    user_data = user_states[user_id]
+    anime_code = user_data['anime_code']
+    
     if not msg.text.isdigit():
-        bot.send_message(msg.chat.id, "❌ <b>Iltimos, raqam yuboring!</b>", parse_mode="HTML")
+        bot.send_message(msg.chat.id, "❌ <b>Iltimos, faqat raqam kiriting!</b>", parse_mode="HTML")
         return
-
-    new_count = int(msg.text)
-    if new_count < current_episodes:
-        bot.send_message(msg.chat.id, f"❌ <b>Qismlar soni {current_episodes} dan kam bo‘lishi mumkin emas!</b>", parse_mode="HTML")
+    
+    episodes_to_add = int(msg.text)
+    
+    if episodes_to_add <= 0:
+        bot.send_message(msg.chat.id, "❌ <b>Qismlar soni 0 dan katta bo'lishi kerak!</b>", parse_mode="HTML")
         return
-
+    
     anime_data = load_data(JSON_FILE)
-    if anime_code not in anime_data:
-        bot.send_message(msg.chat.id, "❌ <b>Anime topilmadi!</b>", parse_mode="HTML")
-        user_states.pop(user_id, None)
-        return
-
-    # Agar yangi qismlar qo‘shilishi kerak bo‘lsa
-    if new_count > current_episodes:
-        user_states[user_id].update({
-            'state': 'adding_new_episodes',
-            'episodes_to_add': new_count - current_episodes,
-            'current_adding_episode': current_episodes + 1,
-            'new_episodes': []
-        })
-
-        bot.send_message(
-            msg.chat.id,
-            f"✅ <b>{new_count - current_episodes} ta yangi qism qo‘shish boshlandi!</b>\n\n"
-            f"📹 Endi <b>{current_episodes + 1}-qism</b> uchun video yuboring:",
-            parse_mode="HTML"
-        )
-    else:
-        # Qismlar soni o'zgarmadi
-        bot.send_message(
-            msg.chat.id,
-            f"✅ <b>Qismlar soni o‘zgarmadi!</b>\n\n"
-            f"Jami qismlar soni: <b>{current_episodes}</b>",
-            parse_mode="HTML"
-        )
-        user_states.pop(user_id, None)
+    anime = anime_data[anime_code]
+    current_episodes_count = len(anime["episodes"])
+    
+    user_data['state'] = 'adding_new_episodes'
+    user_data['episodes_to_add'] = episodes_to_add
+    user_data['current_episode_num'] = current_episodes_count + 1
+    user_data['added_episodes'] = 0
+    
+    bot.send_message(
+        msg.chat.id,
+        f"📹 Endi <b>{user_data['current_episode_num']}-qism</b> uchun video yuboring:",
+        parse_mode="HTML"
+    )
 
 # Yangi qismlar uchun videolarni qabul qilish
 @bot.message_handler(content_types=['video'], func=lambda message: message.from_user.id in user_states and user_states[message.from_user.id]['state'] == 'adding_new_episodes')
 def get_new_episode_video(msg):
     user_id = msg.from_user.id
-    data = user_states[user_id]
-    anime_code = data['anime_code']
+    user_data = user_states[user_id]
+    anime_code = user_data['anime_code']
     file_id = msg.video.file_id
-    current_episode = data['current_adding_episode']
-
-    # Qismni ro‘yxatga qo‘shamiz
-    data['new_episodes'].append({
-        'episode': f"{current_episode}-qism",
+    current_episode_num = user_data['current_episode_num']
+    
+    anime_data = load_data(JSON_FILE)
+    anime = anime_data[anime_code]
+    
+    # Yangi qismni qo'shamiz
+    anime["episodes"].append({
+        'episode': f"{current_episode_num}-qism",
         'file_id': file_id
     })
-
-    # Keyingi qismga tayyorlanamiz
-    if len(data['new_episodes']) < data['episodes_to_add']:
-        data['current_adding_episode'] += 1
+    
+    save_data(anime_data, JSON_FILE)
+    
+    user_data['added_episodes'] += 1
+    user_data['current_episode_num'] += 1
+    
+    if user_data['added_episodes'] < user_data['episodes_to_add']:
+        # Keyingi qismni so'raymiz
         bot.send_message(
             msg.chat.id,
-            f"✅ <b>{current_episode}-qism</b> qo‘shildi!\n\n"
-            f"📹 Endi <b>{data['current_adding_episode']}-qism</b> uchun video yuboring:",
+            f"✅ <b>{current_episode_num}-qism</b> qo'shildi!\n\n"
+            f"📹 Endi <b>{user_data['current_episode_num']}-qism</b> uchun video yuboring:",
             parse_mode="HTML"
         )
     else:
-        # Barcha yangi qismlar qo‘shildi
-        anime_data = load_data(JSON_FILE)
-        if anime_code not in anime_data:
-            bot.send_message(msg.chat.id, "❌ <b>Anime topilmadi!</b>", parse_mode="HTML")
-            user_states.pop(user_id, None)
-            return
-
-        anime_data[anime_code]["episodes"].extend(data['new_episodes'])
-        save_data(anime_data, JSON_FILE)
-
+        # Barcha yangi qismlar qo'shildi
         bot.send_message(
             msg.chat.id,
-            f"✅ <b>Barcha yangi qismlar muvaffaqiyatli qo‘shildi!</b>\n\n"
-            f"🎬 <b>{anime_data[anime_code]['title']}</b>\n"
-            f"📺 Yangi jami qismlar soni: <b>{len(anime_data[anime_code]['episodes'])}</b>",
+            f"✅ <b>Barcha {user_data['episodes_to_add']} ta yangi qism muvaffaqiyatli qo'shildi!</b>\n\n"
+            f"🎬 Anime: <b>{anime['title']}</b>\n"
+            f"📺 Yangi jami qismlar soni: <b>{len(anime['episodes'])}</b>",
             parse_mode="HTML"
         )
-        user_states.pop(user_id, None)
+        
+        if user_id in user_states:
+            del user_states[user_id]
 
 # Bitta anime uchun videoni tahrirlash
 @bot.callback_query_handler(func=lambda call: call.data.startswith('edit_video_'))
@@ -630,6 +623,10 @@ def delete_anime(call):
         bot.answer_callback_query(call.id, "❌ Sizda bunday huquq yo'q!", show_alert=True)
         return
     
+    # Qism o'chirish emasligini tekshirish
+    if call.data.startswith('delete_ep_'):
+        return
+    
     anime_code = call.data.replace('delete_', '')
     anime_data = load_data(JSON_FILE)
     
@@ -672,12 +669,14 @@ def confirm_delete_anime(call):
         return
     
     anime_title = anime_data[anime_code]['title']
+    
+    # Anime ni o'chirish
     del anime_data[anime_code]
     save_data(anime_data, JSON_FILE)
     
     bot.edit_message_text(
         f"✅ <b>Anime muvaffaqiyatli o'chirildi!</b>\n\n"
-        f"🗑️ <b>\"{anime_title}\"</b> animeni o'chirish yakunlandi.",
+        f"🗑️ O'chirilgan: <b>{anime_title}</b>",
         call.message.chat.id,
         call.message.message_id,
         parse_mode="HTML"
