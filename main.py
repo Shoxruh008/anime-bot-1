@@ -859,6 +859,11 @@ def finish_special_episodes(msg):
         "episodes": user_data['episodes'],
         "is_special_series": True
     }
+    
+    # Filler qismlarni saqlash
+    if 'filler_episodes' in user_data:
+        anime_data[code]["filler_episodes"] = user_data['filler_episodes']
+    
     save_data(anime_data, JSON_FILE)
     
     link = f"https://t.me/AnirenXinata_bot?start={code}"
@@ -881,7 +886,7 @@ def add_filler_during_upload(msg):
     user_id = msg.from_user.id
     user_data = user_states[user_id]
     
-    current_episode = user_data['current_episode'] - 1  # Chunki current_episode keyingi qismga o'tgan
+    current_episode = user_data['current_episode_num'] - 1  # Chunki current_episode_num keyingi qismga o'tgan
     
     user_data['state'] = 'adding_filler_during_upload'
     
@@ -904,7 +909,7 @@ def get_filler_during_upload(msg):
         return
     
     filler_count = int(msg.text)
-    current_episode = user_data['current_episode'] - 1
+    current_episode = user_data['current_episode_num'] - 1
     
     # Filler qismlarni saqlaymiz
     if "filler_episodes" not in user_data:
@@ -919,6 +924,7 @@ def get_filler_during_upload(msg):
         f"✅ <b>Filler qismlar saqlandi!</b>\n\n"
         f"🔸 Filler qismlar: <b>{current_episode + 1}-{current_episode + filler_count}</b>\n"
         f"📺 Jami filler qismlar: <b>{filler_count} ta</b>\n\n"
+        f"ℹ️ <b>Filler haqida:</b> Filler qismlar asosiy syujetga ta'sir qilmaydigan qo'shimcha hikoyalardir.\n\n"
         f"📹 Keyingi qismni yuborishni davom eting:",
         parse_mode="HTML"
     )
