@@ -297,7 +297,7 @@ def send_bulk_episodes(chat_id, anime_code, start_episode=1):
         episode_num = i + 1
         
         try:
-            # ✅ TO'G'RILANGAN: Filler qismini to'g'ri tekshirish
+            # Filler qismini tekshirish
             is_filler = False
             if "filler_episodes" in anime:
                 episode_match = re.search(r'\d+', episode['episode'])
@@ -403,6 +403,203 @@ def start(msg):
 
 # Foydalanuvchi holatlari
 user_states = {}
+
+# ==================== YANGI MAXSUS SERIAL TIZIMI ====================
+
+# Maxsus serial qo'shish - YANGI YONDASHUV
+@bot.callback_query_handler(func=lambda call: call.data == 'add_special_series')
+def add_special_series_callback(call):
+    user_id = call.from_user.id
+    if not check_user(user_id):
+        bot.answer_callback_query(call.id, "❌ Sizda bunday huquq yo'q!", show_alert=True)
+        return
+    
+    user_states[user_id] = {
+        'state': 'waiting_special_title',
+        'type': 'special_series'
+    }
+    
+    bot.send_message(
+        call.message.chat.id,
+        "🌟 <b>Maxsus serial qo'shish</b>\n\n"
+        "Anime nomini yuboring:",
+        parse_mode="HTML"
+    )
+    bot.answer_callback_query(call.id)
+
+# Maxsus serial nomini qabul qilish
+@bot.message_handler(func=lambda message: message.from_user.id in user_states and user_states[message.from_user.id].get('state') == 'waiting_special_title')
+def get_special_title(msg):
+    user_id = msg.from_user.id
+    user_data = user_states[user_id]
+    
+    user_data['title'] = msg.text
+    user_data['state'] = 'waiting_special_episodes'
+    user_data['episodes'] = []
+    user_data['current_episode'] = 1
+    
+    bot.send_message(
+        msg.chat.id,
+        f"🌟 <b>Maxsus serial qo'shish</b>\n\n"
+        f"✅ <b>Nomi:</b> {msg.text}\n\n"
+        f"📹 Endi <b>1-qism</b> uchun video yuboring:\n\n"
+        f"🔸 <b>Filler qo'shish uchun:</b> /filler\n"
+        f"⏸️ <b>Yakunlash uchun:</b> /done\n"
+        f"❌ <b>Bekor qilish:</b> /cancel",
+        parse_mode="HTML"
+    )
+
+# Maxsus serial uchun video qabul qilish - YANGI YONDASHUV
+@bot.message_handler(content_types=['video'], func=lambda message: message.from_user.id in user_states and user_states[message.from_user.id].get('state') == 'waiting_special_episodes')
+def get_special_episode_video(msg):
+    user_id = msg.from_user.id
+    user_data = user_states[user_id]
+    
+    if 'episodes' not in user_data:
+        user_data['episodes'] = []
+    
+    file_id = msg.video.file_id
+    current_episode = user_data['current_episode']
+    
+    # Qismni saqlash
+    user_data['episodes'].append({
+        'episode': f"{current_episode}-qism",
+        'file_id': file_id
+    })
+    
+    # Keyingi qismga o'tish
+    user_data['current_episode'] += 1
+    
+    bot.send_message(
+        msg.chat.id,
+        f"✅ <b>{current_episode}-qism</b> qo'shildi!\n\n"
+        f"📹 Endi <b>{user_data['current_episode']}-qism</b> uchun video yuboring:\n\n"
+        f"🔸 <b>Filler qo'shish uchun:</b> /filler\n"
+        f"⏸️ <b>Yakunlash uchun:</b> /done\n"
+        f"❌ <b>Bekor qilish:</b> /cancel",
+        parse_mode="HTML"
+    )
+
+# YANGI: Maxsus serial uchun filler qo'shish komandasi
+@bot.message_handler(commands=['filler'], func=lambda message: message.from_user.id in user_states and user_states[message.from_user.id].get('state') == 'waiting_special_episodes')
+def add_filler_command(msg):
+    user_id = msg.from_user.id
+    user_data = user_states[user_id]
+    
+    # Hozirgi holatni saqlab qo'yamiz
+    user_data['previous_state'] = user_data['state']
+    user_data['state'] = 'waiting_filler_count'
+    
+    current_episode = user_data['current_episode'] - 1  # -1 chunki current_episode keyingi qismga o'tgan
+    
+    bot.send_message(
+        msg.chat.id,
+        f"🔸 <b>Filler qismlar qo'shish</b>\n\n"
+        f"📺 Hozirgi progress: {current_episode}-qism\n\n"
+        f"Nechta qism filler bo'lsin? Raqamda yuboring:\n\n"
+        f"Masalan: <code>3</code> deb yuborsangiz, {current_episode + 1}-{current_episode + 3} qismlar filler bo'ladi",
+        parse_mode="HTML"
+    )
+
+# YANGI: Filler qismlar sonini qabul qilish
+@bot.message_handler(func=lambda message: message.from_user.id in user_states and user_states[message.from_user.id].get('state') == 'waiting_filler_count')
+def get_filler_count(msg):
+    user_id = msg.from_user.id
+    user_data = user_states[user_id]
+    
+    if not msg.text.isdigit():
+        bot.send_message(msg.chat.id, "❌ <b>Iltimos, faqat raqam kiriting!</b>", parse_mode="HTML")
+        return
+    
+    filler_count = int(msg.text)
+    
+    if filler_count <= 0:
+        bot.send_message(msg.chat.id, "❌ <b>Filler qismlar soni 0 dan katta bo'lishi kerak!</b>", parse_mode="HTML")
+        return
+    
+    # Filler qismlarni saqlash
+    if 'filler_episodes' not in user_data:
+        user_data['filler_episodes'] = {}
+    
+    current_episode = user_data['current_episode'] - 1
+    
+    for i in range(filler_count):
+        episode_num = current_episode + i + 1
+        user_data['filler_episodes'][str(episode_num)] = True
+    
+    # Holatni qayta tiklaymiz
+    user_data['state'] = user_data['previous_state']
+    del user_data['previous_state']
+    
+    bot.send_message(
+        msg.chat.id,
+        f"✅ <b>Filler qismlar saqlandi!</b>\n\n"
+        f"🔸 Filler qismlar: <b>{current_episode + 1}-{current_episode + filler_count}</b>\n"
+        f"📺 Jami filler qismlar: <b>{filler_count} ta</b>\n\n"
+        f"📹 Endi <b>{user_data['current_episode']}-qism</b> uchun video yuboring:",
+        parse_mode="HTML"
+    )
+
+# YANGI: Maxsus serialni yakunlash
+@bot.message_handler(commands=['done'], func=lambda message: message.from_user.id in user_states and user_states[message.from_user.id].get('state') == 'waiting_special_episodes')
+def finish_special_series(msg):
+    user_id = msg.from_user.id
+    user_data = user_states[user_id]
+    
+    if 'episodes' not in user_data or not user_data['episodes']:
+        bot.send_message(msg.chat.id, "❌ <b>Hech qanday qism qo'shilmagan!</b>", parse_mode="HTML")
+        return
+    
+    title = user_data['title']
+    code = str(abs(hash(title)))[:8]
+    
+    anime_data = load_data(JSON_FILE)
+    anime_data[code] = {
+        "title": title,
+        "episodes": user_data['episodes'],
+        "is_special_series": True
+    }
+    
+    # Filler qismlarni saqlash
+    if 'filler_episodes' in user_data:
+        anime_data[code]["filler_episodes"] = user_data['filler_episodes']
+    
+    save_data(anime_data, JSON_FILE)
+    
+    link = f"https://t.me/AnirenXinata_bot?start={code}"
+    
+    # Filler ma'lumotlari
+    filler_info = ""
+    if 'filler_episodes' in user_data and user_data['filler_episodes']:
+        filler_ranges = find_filler_ranges(user_data['filler_episodes'], len(user_data['episodes']))
+        filler_counts = [f"{r[0]}-{r[-1]}" if len(r) > 1 else str(r[0]) for r in filler_ranges]
+        filler_info = f"\n🔸 Filler qismlar: {', '.join(filler_counts)}"
+    
+    bot.send_message(
+        msg.chat.id,
+        f"✅ <b>Maxsus serial muvaffaqiyatli qo'shildi!</b>\n\n"
+        f"🎬 <b>Nomi:</b> {title}\n"
+        f"📺 <b>Qismlar soni:</b> {len(user_data['episodes'])}{filler_info}\n"
+        f"🔗 <b>Link:</b> <code>{link}</code>",
+        parse_mode="HTML"
+    )
+    
+    if user_id in user_states:
+        del user_states[user_id]
+
+# YANGI: Bekor qilish komandasi
+@bot.message_handler(commands=['cancel'], func=lambda message: message.from_user.id in user_states)
+def cancel_operation(msg):
+    user_id = msg.from_user.id
+    
+    if user_id in user_states:
+        del user_states[user_id]
+    
+    bot.send_message(
+        msg.chat.id,
+        "❌ <b>Operatsiya bekor qilindi.</b>",
+        parse_mode="HTML"
+    )
 
 # Anime tahrirlash menyusi
 @bot.callback_query_handler(func=lambda call: call.data == 'edit_anime_menu')
@@ -683,98 +880,23 @@ def add_special_episodes(call):
         return
     
     anime_code = call.data.replace('add_special_episodes_', '')
-    anime_data = load_data(JSON_FILE)
-    
-    if anime_code not in anime_data or "episodes" not in anime_data[anime_code]:
-        bot.answer_callback_query(call.id, "❌ Maxsus serial topilmadi!", show_alert=True)
-        return
     
     user_states[user_id] = {
-        'state': 'adding_special_episodes_count',
-        'anime_code': anime_code
+        'state': 'adding_special_episodes_existing',
+        'anime_code': anime_code,
+        'episodes': []
     }
     
     bot.send_message(
         call.message.chat.id,
         f"🌟 <b>Maxsus serial uchun qism qo'shish</b>\n\n"
-        f"Nechta yangi qism qo'shmoqchisiz? Raqamda yuboring:",
+        f"📹 Yangi qismlar uchun videolarni yuboring:\n\n"
+        f"🔸 <b>Filler qo'shish uchun:</b> /filler\n"
+        f"⏸️ <b>Yakunlash uchun:</b> /done\n"
+        f"❌ <b>Bekor qilish:</b> /cancel",
         parse_mode="HTML"
     )
     bot.answer_callback_query(call.id)
-
-# Maxsus serial uchun qismlar sonini qabul qilish
-@bot.message_handler(func=lambda message: message.from_user.id in user_states and user_states[message.from_user.id]['state'] == 'adding_special_episodes_count')
-def get_special_episodes_count(msg):
-    user_id = msg.from_user.id
-    user_data = user_states[user_id]
-    anime_code = user_data['anime_code']
-    
-    if not msg.text.isdigit():
-        bot.send_message(msg.chat.id, "❌ <b>Iltimos, faqat raqam kiriting!</b>", parse_mode="HTML")
-        return
-    
-    episodes_to_add = int(msg.text)
-    
-    if episodes_to_add <= 0:
-        bot.send_message(msg.chat.id, "❌ <b>Qismlar soni 0 dan katta bo'lishi kerak!</b>", parse_mode="HTML")
-        return
-    
-    anime_data = load_data(JSON_FILE)
-    anime = anime_data[anime_code]
-    current_episodes_count = len(anime["episodes"])
-    
-    user_data['state'] = 'adding_special_episodes'
-    user_data['episodes_to_add'] = episodes_to_add
-    user_data['current_episode'] = current_episodes_count + 1
-    user_data['added_episodes'] = 0
-    
-    bot.send_message(
-        msg.chat.id,
-        f"🌟 <b>Maxsus serial qism qo'shish</b>\n\n"
-        f"📺 <b>Jami qo'shiladigan qismlar:</b> {episodes_to_add}\n"
-        f"🔢 <b>Boshlang'ich raqam:</b> {user_data['current_episode']}\n\n"
-        f"📹 Endi barcha qismlarni ketma-ket yuboring. Har bir video yangi qism sifatida qo'shiladi.\n\n"
-        f"⏸️ To'xtatish uchun /done yozing\n"
-        f"🔸 Filler qo'shish uchun /filler yozing",
-        parse_mode="HTML"
-    )
-
-# Maxsus serial uchun bulk video qabul qilish
-@bot.message_handler(content_types=['video'], func=lambda message: message.from_user.id in user_states and user_states[message.from_user.id]['state'] == 'adding_special_episodes')
-def get_special_episode_video_bulk(msg):
-    user_id = msg.from_user.id
-    user_data = user_states[user_id]
-    anime_code = user_data['anime_code']
-    file_id = msg.video.file_id
-    current_episode = user_data['current_episode']
-    
-    anime_data = load_data(JSON_FILE)
-    anime = anime_data[anime_code]
-    
-    # Yangi qismni qo'shamiz
-    anime["episodes"].append({
-        'episode': f"{current_episode}-qism",
-        'file_id': file_id
-    })
-    
-    save_data(anime_data, JSON_FILE)
-    
-    user_data['added_episodes'] += 1
-    user_data['current_episode'] += 1
-    
-    # Agar barcha qismlar qo'shilsa
-    if user_data['added_episodes'] >= user_data['episodes_to_add']:
-        bot.send_message(
-            msg.chat.id,
-            f"✅ <b>Barcha {user_data['episodes_to_add']} ta yangi qism muvaffaqiyatli qo'shildi!</b>\n\n"
-            f"🎬 Anime: <b>{anime['title']}</b>\n"
-            f"📺 Yangi jami qismlar soni: <b>{len(anime['episodes'])}</b>\n"
-            f"🔗 Link: <code>https://t.me/AnirenXinata_bot?start={anime_code}</code>",
-            parse_mode="HTML"
-        )
-        
-        if user_id in user_states:
-            del user_states[user_id]
 
 # Maxsus serial uchun filler qo'shish
 @bot.callback_query_handler(func=lambda call: call.data.startswith('add_filler_'))
@@ -870,99 +992,6 @@ def get_filler_count(msg):
     
     if user_id in user_states:
         del user_states[user_id]
-
-# Maxsus serial uchun /done komandasi
-@bot.message_handler(commands=['done'], func=lambda message: message.from_user.id in user_states and user_states[message.from_user.id]['state'] == 'adding_special_episodes')
-def finish_special_episodes(msg):
-    user_id = msg.from_user.id
-    user_data = user_states[user_id]
-    
-    anime_data = load_data(JSON_FILE)
-    anime = anime_data[user_data['anime_code']]
-    
-    bot.send_message(
-        msg.chat.id,
-        f"✅ <b>Qism qo'shish yakunlandi!</b>\n\n"
-        f"🎬 Anime: <b>{anime['title']}</b>\n"
-        f"📺 Jami qismlar soni: <b>{len(anime['episodes'])}</b>\n"
-        f"🔗 Link: <code>https://t.me/AnirenXinata_bot?start={user_data['anime_code']}</code>",
-        parse_mode="HTML"
-    )
-    
-    if user_id in user_states:
-        del user_states[user_id]
-
-# ✅ TO'G'RILANGAN: Maxsus serial uchun /filler komandasi
-@bot.message_handler(commands=['filler'], func=lambda message: message.from_user.id in user_states and user_states[message.from_user.id].get('state') in ['adding_special_episodes'])
-def filler_command(msg):
-    user_id = msg.from_user.id
-    if user_id not in user_states:
-        bot.send_message(msg.chat.id, "❌ Siz hozir filler qo'shish jarayonida emassiz.")
-        return
-
-    user_data = user_states[user_id]
-    state = user_data.get('state')
-
-    # Faqat maxsus serial qo'shish paytida ishlaydi
-    if state != 'adding_special_episodes':
-        bot.send_message(msg.chat.id, "❌ Filler faqat maxsus serial qo'shish paytida mumkin!", parse_mode="HTML")
-        return
-
-    current_episode = user_data.get('current_episode', 1)
-    user_data['original_state'] = user_data['state']
-    user_data['state'] = 'adding_filler_during_upload'
-    user_data['filler_current_episode'] = current_episode - 1  # -1 chunki current_episode keyingi qismga o'tgan
-
-    bot.send_message(
-        msg.chat.id,
-        f"🔸 <b>Filler qismlar qo'shish</b>\n\n"
-        f"Hozirgi progress: {current_episode}-qism\n"
-        f"Nechta qism filler bo'lsin? Raqamda yuboring:",
-        parse_mode="HTML"
-    )
-
-# ✅ TO'G'RILANGAN: Maxsus serial yuklash davomida filler qo'shish
-@bot.message_handler(func=lambda message: message.from_user.id in user_states and user_states[message.from_user.id].get('state') == 'adding_filler_during_upload')
-def get_filler_during_upload(msg):
-    user_id = msg.from_user.id
-    user_data = user_states[user_id]
-    
-    if not msg.text.isdigit():
-        bot.send_message(msg.chat.id, "❌ <b>Iltimos, faqat raqam kiriting!</b>", parse_mode="HTML")
-        return
-    
-    filler_count = int(msg.text)
-    current_episode = user_data.get('filler_current_episode', 0)
-    
-    if filler_count <= 0:
-        bot.send_message(msg.chat.id, "❌ <b>Filler qismlar soni 0 dan katta bo'lishi kerak!</b>", parse_mode="HTML")
-        return
-    
-    # Filler qismlarni saqlaymiz
-    if "filler_episodes" not in user_data:
-        user_data['filler_episodes'] = {}
-    
-    # Hozirgi qismdan boshlab filler qo'shamiz
-    for i in range(filler_count):
-        episode_num = current_episode + i + 1
-        user_data['filler_episodes'][str(episode_num)] = True
-    
-    bot.send_message(
-        msg.chat.id,
-        f"✅ <b>Filler qismlar saqlandi!</b>\n\n"
-        f"🔸 Filler qismlar: <b>{current_episode + 1}-{current_episode + filler_count}</b>\n"
-        f"📺 Jami filler qismlar: <b>{filler_count} ta</b>\n\n"
-        f"ℹ️ <b>Filler haqida:</b> Filler qismlar asosiy syujetga ta'sir qilmaydigan qo'shimcha hikoyalardir.\n\n"
-        f"📹 Keyingi qismni yuborishni davom eting:",
-        parse_mode="HTML"
-    )
-    
-    # Holatni qayta tiklaymiz - asl holatga qaytamiz
-    user_data['state'] = user_data['original_state']
-    if 'original_state' in user_data:
-        del user_data['original_state']
-    if 'filler_current_episode' in user_data:
-        del user_data['filler_current_episode']
 
 # Maxsus serial sozlamalari
 @bot.callback_query_handler(func=lambda call: call.data.startswith('special_settings_'))
@@ -1298,7 +1327,7 @@ def send_text_anime_list(chat_id):
     if text:
         bot.send_message(chat_id, text, parse_mode="HTML")
 
-# ✅ TO'G'RILANGAN: Episode tanlash
+# Episode tanlash
 @bot.callback_query_handler(func=lambda call: call.data.startswith('ep_'))
 def process_episode(call):
     # Avval obunani tekshirish
@@ -1348,7 +1377,7 @@ def process_episode(call):
     episode = anime["episodes"][ep_index]
     
     try:
-        # ✅ TO'G'RILANGAN: Filler qismini to'g'ri tekshirish
+        # Filler qismini to'g'ri tekshirish
         is_filler = False
         if "filler_episodes" in anime:
             # Qism nomidan raqamni ajratib olish (masalan: "25-qism" -> 25)
@@ -1478,18 +1507,6 @@ def add_series_callback(call):
     bot.send_message(call.message.chat.id, "📺 <b>Serial qo'shish</b>\n\nAnime nomini yuboring:", parse_mode="HTML")
     bot.answer_callback_query(call.id)
 
-# Maxsus serial qo'shish
-@bot.callback_query_handler(func=lambda call: call.data == 'add_special_series')
-def add_special_series_callback(call):
-    user_id = call.from_user.id
-    if not check_user(user_id):
-        bot.answer_callback_query(call.id, "❌ Sizda bunday huquq yo'q!", show_alert=True)
-        return
-    
-    user_states[user_id] = {'state': 'waiting_for_title', 'is_special_series': True}
-    bot.send_message(call.message.chat.id, "🌟 <b>Maxsus serial qo'shish</b>\n\nAnime nomini yuboring:", parse_mode="HTML")
-    bot.answer_callback_query(call.id)
-
 # Anime nomi qabul qilish
 @bot.message_handler(func=lambda message: message.from_user.id in user_states and user_states[message.from_user.id]['state'] == 'waiting_for_title')
 def get_title(msg):
@@ -1527,120 +1544,14 @@ def get_special_episodes_count(msg):
     
     user_data['episodes_count'] = episodes_count
     user_data['current_episode'] = 1
-    user_data['state'] = 'adding_special_episodes'
+    user_data['state'] = 'waiting_for_episode_video'
     
     bot.send_message(
         msg.chat.id,
-        f"🌟 <b>Maxsus serial qo'shish</b>\n\n"
         f"✅ <b>{episodes_count} qism qabul qilindi!</b>\n\n"
-        f"📹 Endi barcha qismlarni ketma-ket yuboring. Har bir video yangi qism sifatida qo'shiladi.\n\n"
-        f"⏸️ To'xtatish uchun /done yozing\n"
-        f"🔸 Filler qo'shish uchun /filler yozing\n\n"
-        f"📹 <b>1-qism</b> uchun video yuboring:",
+        f"📹 Endi <b>1-qism</b> uchun video yuboring:",
         parse_mode="HTML"
     )
-
-# ✅ TO'G'RILANGAN: Maxsus serial uchun bulk video qabul qilish
-@bot.message_handler(content_types=['video'], func=lambda message: message.from_user.id in user_states and user_states[message.from_user.id]['state'] == 'adding_special_episodes')
-def get_special_episode_video(msg):
-    user_id = msg.from_user.id
-    user_data = user_states[user_id]
-    
-    if 'episodes' not in user_data:
-        user_data['episodes'] = []
-    
-    file_id = msg.video.file_id
-    current_episode = user_data['current_episode']
-    
-    # Qismni saqlash
-    user_data['episodes'].append({
-        'episode': f"{current_episode}-qism",
-        'file_id': file_id
-    })
-    
-    # Keyingi qismga o'tish
-    user_data['current_episode'] += 1
-    
-    if user_data['current_episode'] <= user_data['episodes_count']:
-        # Keyingi qismni so'rash
-        bot.send_message(
-            msg.chat.id,
-            f"✅ <b>{current_episode}-qism</b> qo'shildi!\n\n"
-            f"📹 Endi <b>{user_data['current_episode']}-qism</b> uchun video yuboring:\n\n"
-            f"🔸 Filler qo'shish uchun /filler yozing\n"
-            f"⏸️ To'xtatish uchun /done yozing",
-            parse_mode="HTML"
-        )
-    else:
-        # Barcha qismlar qo'shildi
-        title = user_data['title']
-        code = str(abs(hash(title)))[:8]
-        
-        anime_data = load_data(JSON_FILE)
-        anime_data[code] = {
-            "title": title,
-            "episodes": user_data['episodes'],
-            "is_special_series": True
-        }
-        
-        # Filler qismlarni saqlash
-        if 'filler_episodes' in user_data:
-            anime_data[code]["filler_episodes"] = user_data['filler_episodes']
-        
-        save_data(anime_data, JSON_FILE)
-        
-        link = f"https://t.me/AnirenXinata_bot?start={code}"
-        bot.send_message(
-            msg.chat.id,
-            f"✅ <b>Maxsus serial muvaffaqiyatli qo'shildi!</b>\n\n"
-            f"🎬 <b>Nomi:</b> {title}\n"
-            f"📺 <b>Qismlar soni:</b> {user_data['episodes_count']}\n"
-            f"🔗 <b>Link:</b> <code>{link}</code>",
-            parse_mode="HTML"
-        )
-        
-        if user_id in user_states:
-            del user_states[user_id]
-
-# Maxsus serial uchun /done komandasi
-@bot.message_handler(commands=['done'], func=lambda message: message.from_user.id in user_states and user_states[message.from_user.id]['state'] == 'adding_special_episodes')
-def finish_special_episodes(msg):
-    user_id = msg.from_user.id
-    user_data = user_states[user_id]
-    
-    if 'episodes' not in user_data or not user_data['episodes']:
-        bot.send_message(msg.chat.id, "❌ <b>Hech qanday qism qo'shilmagan!</b>", parse_mode="HTML")
-        return
-    
-    title = user_data['title']
-    code = str(abs(hash(title)))[:8]
-    
-    anime_data = load_data(JSON_FILE)
-    anime_data[code] = {
-        "title": title,
-        "episodes": user_data['episodes'],
-        "is_special_series": True
-    }
-    
-    # Filler qismlarni saqlash
-    if 'filler_episodes' in user_data:
-        anime_data[code]["filler_episodes"] = user_data['filler_episodes']
-    
-    save_data(anime_data, JSON_FILE)
-    
-    link = f"https://t.me/AnirenXinata_bot?start={code}"
-    bot.send_message(
-        msg.chat.id,
-        f"✅ <b>Maxsus serial muvaffaqiyatli qo'shildi!</b>\n\n"
-        f"🎬 <b>Nomi:</b> {title}\n"
-        f"📺 <b>Qismlar soni:</b> {len(user_data['episodes'])}\n"
-        f"🔗 <b>Link:</b> <code>{link}</code>\n\n"
-        f"⚠️ <b>Eslatma:</b> Siz {user_data['episodes_count']} qism plan qilgandingiz, ammo {len(user_data['episodes'])} qism qo'shdingiz.",
-        parse_mode="HTML"
-    )
-    
-    if user_id in user_states:
-        del user_states[user_id]
 
 # Serial uchun qismlar sonini qabul qilish
 @bot.message_handler(func=lambda message: message.from_user.id in user_states and user_states[message.from_user.id]['state'] == 'waiting_for_episodes_count')
