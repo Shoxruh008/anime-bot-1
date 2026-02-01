@@ -627,7 +627,7 @@ def finish_special_series(msg):
         filler_ranges.append(current_range)
             
     if filler_ranges:
-        filler_counts = [f"{r[0]}-{r[-1]}" if len(r) > 1 else str(r[0]) for r in filler_ranges]
+        filler_counts = [f"{r[0]}-{r[-1]}-qismlar" if len(r) > 1 else f"{r[0]}-qism" for r in filler_ranges]
         filler_info = f"\n🔸 Filler qismlar: {', '.join(filler_counts)}"
     
     bot.send_message(
@@ -1185,6 +1185,10 @@ def get_renumber_start(msg):
     # Qism raqamlarini yangilash
     for i, episode in enumerate(anime["episodes"]):
         episode["episode"] = f"{start_number + i}-qism"
+    
+    # Eski tizimdagi filler ma'lumotlarini o'chiramiz (chunki endi list ichida ishlaydi)
+    if "filler_episodes" in anime:
+        del anime["filler_episodes"]
     
     save_data(anime_data, JSON_FILE)
     
