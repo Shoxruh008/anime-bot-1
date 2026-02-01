@@ -309,12 +309,22 @@ def send_bulk_episodes(chat_id, anime_code, start_episode=1):
                 filler_end_idx += 1
             
             # Filler diapazoni
-            start_filler = i + 1
-            end_filler = filler_end_idx
+            start_ep_obj = episodes[i]
+            end_ep_obj = episodes[filler_end_idx - 1]
+            
+            start_filler_num = "???"
+            end_filler_num = "???"
+            
+            # Raqamlarni parsing qilish
+            match_start = re.search(r'\d+', start_ep_obj['episode'])
+            if match_start: start_filler_num = match_start.group()
+            
+            match_end = re.search(r'\d+', end_ep_obj['episode'])
+            if match_end: end_filler_num = match_end.group()
             
             # Xabar yuborish
             filler_text = (
-                f"🔸 <b>Filler oraliq: {start_filler}-{end_filler} qismlar</b>\n\n"
+                f"🔸 <b>Filler oraliq: {start_filler_num}-{end_filler_num}-qismlar</b>\n\n"
                 f"ℹ️ Bu qismlar asosiy syujetga ta'sir qilmaydigan filler qismlardir. "
                 f"Shu sababli ular tashlab ketildi."
             )
@@ -322,6 +332,11 @@ def send_bulk_episodes(chat_id, anime_code, start_episode=1):
             
             # Sanagichni yangilash
             i = filler_end_idx
+            
+            # Sleep (xabar yuborilgani uchun)
+            messages_sent += 1
+            if messages_sent % 10 == 0:
+                time.sleep(5)
             continue
 
         try:
@@ -717,8 +732,7 @@ def start_edit_anime(call):
         if "is_special_series" in anime and anime["is_special_series"]:
             # Maxsus serial
             keyboard.add(
-                types.InlineKeyboardButton("✏️ Nomi", callback_data=f"edit_title_{anime_code}"),
-                types.InlineKeyboardButton("📺 Qism qo'shish", callback_data=f"add_special_episodes_{anime_code}")
+                types.InlineKeyboardButton("✏️ Nomi", callback_data=f"edit_title_{anime_code}")
             )
             keyboard.add(
                 types.InlineKeyboardButton("🔸 Filler qo'shish", callback_data=f"add_filler_{anime_code}"),
@@ -948,32 +962,9 @@ def get_new_episode_video(msg):
         if user_id in user_states:
             del user_states[user_id]
 
-# Maxsus serial uchun qism qo'shish
-@bot.callback_query_handler(func=lambda call: call.data.startswith('add_special_episodes_'))
-def add_special_episodes(call):
-    user_id = call.from_user.id
-    if not check_user(user_id):
-        bot.answer_callback_query(call.id, "❌ Sizda bunday huquq yo'q!", show_alert=True)
-        return
-    
-    anime_code = call.data.replace('add_special_episodes_', '')
-    
-    user_states[user_id] = {
-        'state': 'adding_special_episodes_existing',
-        'anime_code': anime_code,
-        'episodes': []
-    }
-    
-    bot.send_message(
-        call.message.chat.id,
-        f"🌟 <b>Maxsus serial uchun qism qo'shish</b>\n\n"
-        f"📹 Yangi qismlar uchun videolarni yuboring:\n\n"
-        f"🔸 <b>Filler qo'shish uchun:</b> /filler\n"
-        f"⏸️ <b>Yakunlash uchun:</b> /done\n"
-        f"❌ <b>Bekor qilish:</b> /cancel",
-        parse_mode="HTML"
-    )
-    bot.answer_callback_query(call.id)
+        if user_id in user_states:
+            del user_states[user_id] 
+
 
 # Maxsus serial uchun filler qo'shish
 @bot.callback_query_handler(func=lambda call: call.data.startswith('add_filler_'))
@@ -1095,8 +1086,7 @@ def special_settings(call):
     
     keyboard = types.InlineKeyboardMarkup()
     keyboard.add(
-        types.InlineKeyboardButton("🔄 Qism raqamlarini o'zgartirish", callback_data=f"renumber_{anime_code}"),
-        types.InlineKeyboardButton("📊 Filler qismlarni ko'rish", callback_data=f"view_fillers_{anime_code}")
+        types.InlineKeyboardButton("🔄 Qism raqamlarini o'zgartirish", callback_data=f"renumber_{anime_code}")
     )
     keyboard.add(types.InlineKeyboardButton("🔙 Orqaga", callback_data=f"panel_{anime_code}"))
     
