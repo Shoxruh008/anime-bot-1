@@ -732,10 +732,7 @@ def start_edit_anime(call):
         if "is_special_series" in anime and anime["is_special_series"]:
             # Maxsus serial
             keyboard.add(
-                types.InlineKeyboardButton("✏️ Nomi", callback_data=f"edit_title_{anime_code}")
-            )
-            keyboard.add(
-                types.InlineKeyboardButton("🔸 Filler qo'shish", callback_data=f"add_filler_{anime_code}"),
+                types.InlineKeyboardButton("✏️ Nomi", callback_data=f"edit_title_{anime_code}"),
                 types.InlineKeyboardButton("🔧 Maxsus sozlamalar", callback_data=f"special_settings_{anime_code}")
             )
         else:
