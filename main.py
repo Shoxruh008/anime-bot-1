@@ -629,7 +629,7 @@ def edit_anime_menu_callback(call):
             anime_type = "🌟 Maxsus Serial"
         keyboard.add(types.InlineKeyboardButton(
             f"{anime_type} | {anime['title']}", 
-            callback_data=f"edit_{code}"
+            callback_data=f"panel_{code}"
         ))
     
     keyboard.add(types.InlineKeyboardButton("🔙 Orqaga", callback_data="main_menu"))
@@ -645,14 +645,14 @@ def edit_anime_menu_callback(call):
     bot.answer_callback_query(call.id)
 
 # Anime ni tahrirlashni boshlash
-@bot.callback_query_handler(func=lambda call: call.data.startswith('edit_'))
+@bot.callback_query_handler(func=lambda call: call.data.startswith('panel_'))
 def start_edit_anime(call):
     user_id = call.from_user.id
     if not check_user(user_id):
         bot.answer_callback_query(call.id, "❌ Sizda bunday huquq yo'q!", show_alert=True)
         return
     
-    anime_code = call.data.replace('edit_', '')
+    anime_code = call.data.replace('panel_', '')
     anime_data = load_data(JSON_FILE)
     
     if anime_code not in anime_data:
@@ -1021,7 +1021,7 @@ def special_settings(call):
         types.InlineKeyboardButton("🔄 Qism raqamlarini o'zgartirish", callback_data=f"renumber_{anime_code}"),
         types.InlineKeyboardButton("📊 Filler qismlarni ko'rish", callback_data=f"view_fillers_{anime_code}")
     )
-    keyboard.add(types.InlineKeyboardButton("🔙 Orqaga", callback_data=f"edit_{anime_code}"))
+    keyboard.add(types.InlineKeyboardButton("🔙 Orqaga", callback_data=f"panel_{anime_code}"))
     
     filler_info = ""
     if "filler_episodes" in anime and anime["filler_episodes"]:
@@ -1216,7 +1216,7 @@ def delete_anime(call):
     keyboard = types.InlineKeyboardMarkup()
     keyboard.add(
         types.InlineKeyboardButton("✅ Ha, o'chirish", callback_data=f"confirm_delete_{anime_code}"),
-        types.InlineKeyboardButton("❌ Bekor qilish", callback_data=f"edit_{anime_code}")
+        types.InlineKeyboardButton("❌ Bekor qilish", callback_data=f"panel_{anime_code}")
     )
     
     bot.edit_message_text(
