@@ -10,7 +10,7 @@ import datetime
 import re
 
 # ⚙️ Sozlamalar
-API_TOKEN = "8428253874:AAH1gMCyahs0c2rQnwTWAkNA20OXXXkpsqI"
+API_TOKEN = "8428253874:AAEM3EqkhUw1sGk1GSMXsiy4y3jBsHfwlbw"
 MAIN_ADMIN_ID = 5371043130
 JSON_FILE = "anime.json"
 ADMINS_FILE = "admins.json"
