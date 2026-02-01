@@ -1,0 +1,9 @@
+# Ma'lumotlar bazasi fayllari (serverda o'zgaradi, localdan serverga yuborilmasligi kerak)
+anime.json
+admins.json
+channels.json
+
+# Konfiguratsiya va maxfiy ma'lumotlar
+.env
+__pycache__/
+*.pdf
