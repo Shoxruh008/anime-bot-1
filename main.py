@@ -320,7 +320,7 @@ def send_bulk_episodes(chat_id, anime_code, start_episode=1):
             )
             
             messages_sent += 1
-            if messages_sent % 5 == 0:
+            if messages_sent % 10 == 0:
                 time.sleep(5) # 5 sekund pauza
             
             # Filler boshlanganida xabar berish
@@ -1693,7 +1693,7 @@ def remove_admin_callback(call):
     
     keyboard = types.InlineKeyboardMarkup()
     for admin_id, name in admins.items():
-        keyboard.add(types.InlineKeyboardButton(f"👤 {name} - {admin_id}", callback_data=f"remove_{admin_id}"))
+        keyboard.add(types.InlineKeyboardButton(f"👤 {name} - {admin_id}", callback_data=f"delete_admin_{admin_id}"))
     
     keyboard.add(types.InlineKeyboardButton("🔙 Orqaga", callback_data="admin_manage"))
     
@@ -1701,9 +1701,9 @@ def remove_admin_callback(call):
     bot.answer_callback_query(call.id)
 
 # Adminni o'chirish
-@bot.callback_query_handler(func=lambda call: call.data.startswith('remove_'))
+@bot.callback_query_handler(func=lambda call: call.data.startswith('delete_admin_'))
 def process_remove_admin(call):
-    admin_id = call.data.replace('remove_', '')
+    admin_id = call.data.replace('delete_admin_', '')
     admins = load_data(ADMINS_FILE)
     
     if admin_id in admins:
