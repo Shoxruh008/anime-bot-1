@@ -595,8 +595,9 @@ def finish_special_series(msg):
     }
     
     # Filler qismlarni saqlash
-    if 'filler_episodes' in user_data:
-        anime_data[code]["filler_episodes"] = user_data['filler_episodes']
+    # 'filler_episodes' endi to'g'ridan-to'g'ri 'episodes' ichida belgilanadi, shuning uchun bu qism o'zgaradi
+    # if 'filler_episodes' in user_data:
+    #     anime_data[code]["filler_episodes"] = user_data['filler_episodes']
     
     save_data(anime_data, JSON_FILE)
     
@@ -604,8 +605,28 @@ def finish_special_series(msg):
     
     # Filler ma'lumotlari
     filler_info = ""
-    if 'filler_episodes' in user_data and user_data['filler_episodes']:
-        filler_ranges = find_filler_ranges(user_data['filler_episodes'], len(user_data['episodes']))
+    filler_ranges = []
+    current_range = []
+    for i, ep in enumerate(user_data['episodes']):
+        if ep.get('is_filler'):
+            match = re.search(r'\d+', ep['episode'])
+            if match:
+                num = int(match.group())
+                if not current_range:
+                    current_range = [num]
+                elif num == current_range[-1] + 1:
+                    current_range.append(num)
+                else:
+                    filler_ranges.append(current_range)
+                    current_range = [num]
+        else:
+            if current_range:
+                filler_ranges.append(current_range)
+                current_range = []
+    if current_range:
+        filler_ranges.append(current_range)
+            
+    if filler_ranges:
         filler_counts = [f"{r[0]}-{r[-1]}" if len(r) > 1 else str(r[0]) for r in filler_ranges]
         filler_info = f"\n🔸 Filler qismlar: {', '.join(filler_counts)}"
     
@@ -728,10 +749,32 @@ def start_edit_anime(call):
     episodes_info = f"\n📺 Qismlar soni: {len(anime['episodes'])}" if "episodes" in anime else ""
     
     filler_info = ""
-    if "filler_episodes" in anime and anime["filler_episodes"]:
-        filler_ranges = find_filler_ranges(anime["filler_episodes"], len(anime["episodes"]))
-        filler_counts = [f"{r[0]}-{r[-1]}" if len(r) > 1 else str(r[0]) for r in filler_ranges]
-        filler_info = f"\n🔸 Filler qismlar: {', '.join(filler_counts)}"
+    if "episodes" in anime:
+        filler_ranges = []
+        current_range = []
+        for i, ep in enumerate(anime['episodes']):
+            if ep.get('is_filler'):
+                # Qism raqamini topish
+                match = re.search(r'\d+', ep['episode'])
+                if match:
+                    num = int(match.group())
+                    if not current_range:
+                        current_range = [num]
+                    elif num == current_range[-1] + 1:
+                        current_range.append(num)
+                    else:
+                        filler_ranges.append(current_range)
+                        current_range = [num]
+            else:
+                if current_range:
+                    filler_ranges.append(current_range)
+                    current_range = []
+        if current_range:
+            filler_ranges.append(current_range)
+            
+        if filler_ranges:
+            filler_counts = [f"{r[0]}-{r[-1]}" if len(r) > 1 else str(r[0]) for r in filler_ranges]
+            filler_info = f"\n🔸 Filler qismlar: {', '.join(filler_counts)}"
     
     bot.edit_message_text(
         f"✏️ <b>Anime tahrirlash</b>\n\n"
@@ -943,14 +986,15 @@ def add_filler_callback(call):
     anime_code = call.data.replace('add_filler_', '')
     
     user_states[user_id] = {
-        'state': 'adding_filler_start',
+        'state': 'adding_filler_count',
         'anime_code': anime_code
     }
     
     bot.send_message(
         call.message.chat.id,
         f"🔸 <b>Filler qismlar qo'shish</b>\n\n"
-        f"Qaysi qismdan boshlab filler qismlar qo'shmoqchisiz? Raqamda yuboring:",
+        f"Nechta qism filler qo'shmoqchisiz? Raqamda yuboring:\n"
+        f"Kiritgan soningizcha qism ro'yxat oxiriga filler sifatida qo'shiladi.",
         parse_mode="HTML"
     )
     bot.answer_callback_query(call.id)
@@ -995,22 +1039,28 @@ def get_filler_count(msg):
         return
     
     filler_count = int(msg.text)
-    start_episode = user_data['filler_start']
     
     anime_data = load_data(JSON_FILE)
     anime = anime_data[user_data['anime_code']]
     
-    if start_episode + filler_count - 1 > len(anime["episodes"]):
-        bot.send_message(msg.chat.id, f"❌ <b>Filler qismlar {len(anime['episodes'])}-qismdan oshib ketdi!</b>", parse_mode="HTML")
-        return
+    # Oxirgi qism raqamini aniqlash
+    last_episode_num = 0
+    if anime['episodes']:
+        last_ep = anime['episodes'][-1]
+        match = re.search(r'\d+', last_ep['episode'])
+        if match:
+            last_episode_num = int(match.group())
     
-    # Filler qismlarni saqlaymiz
-    if "filler_episodes" not in anime:
-        anime["filler_episodes"] = {}
+    start_episode = last_episode_num + 1
     
+    # Filler qismlarni qo'shamiz (append)
     for i in range(filler_count):
         episode_num = start_episode + i
-        anime["filler_episodes"][str(episode_num)] = True
+        anime["episodes"].append({
+            'episode': f"{episode_num}-qism",
+            'file_id': None,
+            'is_filler': True
+        })
     
     save_data(anime_data, JSON_FILE)
     
@@ -1018,9 +1068,8 @@ def get_filler_count(msg):
         msg.chat.id,
         f"✅ <b>Filler qismlar muvaffaqiyatli qo'shildi!</b>\n\n"
         f"🎬 Anime: <b>{anime['title']}</b>\n"
-        f"🔸 Filler qismlar: <b>{start_episode}-{start_episode + filler_count - 1}</b>\n"
-        f"📺 Jami filler qismlar: <b>{filler_count} ta</b>\n\n"
-        f"ℹ️ <b>Filler haqida:</b> Filler qismlar asosiy syujetga ta'sir qilmaydigan qo'shimcha hikoyalardir.",
+        f"🔸 Yangi fillerlar: <b>{start_episode}-{start_episode + filler_count - 1}</b>\n"
+        f"📺 Jami yangi fillerlar: <b>{filler_count} ta</b>\n",
         parse_mode="HTML"
     )
     
@@ -1052,10 +1101,31 @@ def special_settings(call):
     keyboard.add(types.InlineKeyboardButton("🔙 Orqaga", callback_data=f"panel_{anime_code}"))
     
     filler_info = ""
-    if "filler_episodes" in anime and anime["filler_episodes"]:
-        filler_ranges = find_filler_ranges(anime["filler_episodes"], len(anime["episodes"]))
-        filler_counts = [f"{r[0]}-{r[-1]}" if len(r) > 1 else str(r[0]) for r in filler_ranges]
-        filler_info = f"\n🔸 Filler qismlar: {', '.join(filler_counts)}"
+    if "episodes" in anime:
+        filler_ranges = []
+        current_range = []
+        for i, ep in enumerate(anime['episodes']):
+            if ep.get('is_filler'):
+                match = re.search(r'\d+', ep['episode'])
+                if match:
+                    num = int(match.group())
+                    if not current_range:
+                        current_range = [num]
+                    elif num == current_range[-1] + 1:
+                        current_range.append(num)
+                    else:
+                        filler_ranges.append(current_range)
+                        current_range = [num]
+            else:
+                if current_range:
+                    filler_ranges.append(current_range)
+                    current_range = []
+        if current_range:
+            filler_ranges.append(current_range)
+            
+        if filler_ranges:
+            filler_counts = [f"{r[0]}-{r[-1]}" if len(r) > 1 else str(r[0]) for r in filler_ranges]
+            filler_info = f"\n🔸 Filler qismlar: {', '.join(filler_counts)}"
     
     bot.edit_message_text(
         f"🔧 <b>Maxsus serial sozlamalari</b>\n\n"
