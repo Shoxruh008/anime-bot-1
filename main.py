@@ -1,5 +1,6 @@
 import json
 import os
+import time
 import logging
 import telebot
 from telebot import types
@@ -291,6 +292,7 @@ def send_bulk_episodes(chat_id, anime_code, start_episode=1):
     if "filler_episodes" in anime and anime["filler_episodes"]:
         filler_ranges = find_filler_ranges(anime["filler_episodes"], total_episodes)
     
+    messages_sent = 0
     # Start episodedan boshlab yuborish
     for i in range(start_episode - 1, total_episodes):
         episode = episodes[i]
@@ -316,6 +318,10 @@ def send_bulk_episodes(chat_id, anime_code, start_episode=1):
                 caption=caption, 
                 parse_mode="HTML"
             )
+            
+            messages_sent += 1
+            if messages_sent % 5 == 0:
+                time.sleep(5) # 5 sekund pauza
             
             # Filler boshlanganida xabar berish
             if is_filler and episode_num == start_episode:
