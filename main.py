@@ -292,24 +292,50 @@ def send_bulk_episodes(chat_id, anime_code, start_episode=1):
     if "filler_episodes" in anime and anime["filler_episodes"]:
         filler_ranges = find_filler_ranges(anime["filler_episodes"], total_episodes)
     
+    episodes = anime["episodes"]
+    total_episodes = len(episodes)
+    
     messages_sent = 0
-    # Start episodedan boshlab yuborish
-    for i in range(start_episode - 1, total_episodes):
+    i = start_episode - 1
+    
+    while i < total_episodes:
         episode = episodes[i]
-        episode_num = i + 1
         
+        # Agar bu filler qism bo'lsa (yangi tizim bo'yicha)
+        if episode.get('is_filler'):
+            # Filler blokini aniqlash (ketma-ket nechta filler borligini topish)
+            filler_end_idx = i
+            while filler_end_idx < total_episodes and episodes[filler_end_idx].get('is_filler'):
+                filler_end_idx += 1
+            
+            # Filler diapazoni
+            start_filler = i + 1
+            end_filler = filler_end_idx
+            
+            # Xabar yuborish
+            filler_text = (
+                f"🔸 <b>Filler oraliq: {start_filler}-{end_filler} qismlar</b>\n\n"
+                f"ℹ️ Bu qismlar asosiy syujetga ta'sir qilmaydigan filler qismlardir. "
+                f"Shu sababli ular tashlab ketildi."
+            )
+            bot.send_message(chat_id, filler_text, parse_mode="HTML")
+            
+            # Sanagichni yangilash
+            i = filler_end_idx
+            continue
+
         try:
-            # Filler qismini tekshirish
-            is_filler = False
+            # Eski tizim bo'yicha filler tekshiruv (agar mavjud bo'lsa)
+            is_filler_legacy = False
             if "filler_episodes" in anime:
                 episode_match = re.search(r'\d+', episode['episode'])
                 if episode_match:
                     episode_number = episode_match.group()
                     if episode_number.isdigit() and str(episode_number) in anime["filler_episodes"]:
-                        is_filler = True
+                        is_filler_legacy = True
             
             caption = f"<b>🎌 {anime['title']}</b>\n\n<b>📺 Qism:</b> {episode['episode']}"
-            if is_filler:
+            if is_filler_legacy:
                 caption += "\n\n🔸 <b>Filler qism</b> - Bu qism asosiy syujetga ta'sir qilmaydi"
             
             bot.send_video(
@@ -322,20 +348,12 @@ def send_bulk_episodes(chat_id, anime_code, start_episode=1):
             messages_sent += 1
             if messages_sent % 10 == 0:
                 time.sleep(5) # 5 sekund pauza
-            
-            # Filler boshlanganida xabar berish
-            if is_filler and episode_num == start_episode:
-                # Filler ketma-ketligini topish
-                for filler_range in filler_ranges:
-                    if episode_num in filler_range:
-                        if len(filler_range) > 1:
-                            filler_info = f"🔸 <b>Filler boshlandi:</b> {filler_range[0]}-{filler_range[-1]} qismlar filler\n\n"
-                            filler_info += "ℹ️ <b>Filler haqida:</b> Bu qismlar asosiy syujetga ta'sir qilmaydigan qo'shimcha hikoyalardir. Agar vaqtingiz cheklangan bo'lsa, o'tkazib yuborishingiz mumkin."
-                            bot.send_message(chat_id, filler_info, parse_mode="HTML")
-                        break
+                
+            i += 1
             
         except Exception as e:
             logging.error(f"Video yuborishda xato: {e}")
+            i += 1
             continue
 
 # 📌 /start
@@ -524,14 +542,24 @@ def get_filler_count(msg):
         return
     
     # Filler qismlarni saqlash
-    if 'filler_episodes' not in user_data:
-        user_data['filler_episodes'] = {}
-    
-    current_episode = user_data['current_episode'] - 1
-    
+    # Yangi usul: to'g'ridan-to'g'ri episodes ro'yxatiga qo'shamiz
+    if 'episodes' not in user_data:
+        user_data['episodes'] = []
+
+    current_episode = user_data['current_episode']
+
     for i in range(filler_count):
-        episode_num = current_episode + i + 1
-        user_data['filler_episodes'][str(episode_num)] = True
+        # Hozirgi qism raqami (curent_episode o'zi aslida keyingi kutilayotgan qism)
+        # Lekin biz buni shundayligicha ishlatamiz chunki current_episode hali video olmagan
+        episode_num = current_episode + i
+        user_data['episodes'].append({
+            'episode': f"{episode_num}-qism",
+            'file_id': None, # Video yo'q
+            'is_filler': True
+        })
+    
+    # Keyingi qism raqamini yangilaymiz
+    user_data['current_episode'] += filler_count
     
     # Holatni qayta tiklaymiz
     user_data['state'] = user_data['previous_state']
@@ -539,10 +567,10 @@ def get_filler_count(msg):
     
     bot.send_message(
         msg.chat.id,
-        f"✅ <b>Filler qismlar saqlandi!</b>\n\n"
-        f"🔸 Filler qismlar: <b>{current_episode + 1}-{current_episode + filler_count}</b>\n"
-        f"📺 Jami filler qismlar: <b>{filler_count} ta</b>\n\n"
-        f"📹 Endi <b>{user_data['current_episode']}-qism</b> uchun video yuboring:",
+        f"✅ <b>Filler oraliq saqlandi!</b>\n\n"
+        f"🔸 Filler qismlar: <b>{current_episode}-{current_episode + filler_count - 1}</b>\n"
+        f"📺 Jami filler: <b>{filler_count} ta</b>\n\n"
+        f"📹 Endi <b>{user_data['current_episode']}-qism</b> (asosiy) uchun video yuboring:",
         parse_mode="HTML"
     )
 
