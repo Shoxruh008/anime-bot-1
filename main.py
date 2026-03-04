@@ -12,7 +12,7 @@ import re
 
 # ⚙️ Sozlamalar
 API_TOKEN = os.getenv("BOT_TOKEN") 
-MAIN_ADMIN_ID = os.getenv("MAIN_ADMIN_ID")
+MAIN_ADMIN_ID = int(os.getenv("MAIN_ADMIN_ID"))
 DATA_DIR = "../data"
 
 JSON_FILE = os.path.join(DATA_DIR, "anime.json")
