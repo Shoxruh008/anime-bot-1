@@ -11,11 +11,13 @@ import datetime
 import re
 
 # ⚙️ Sozlamalar
-API_TOKEN = "8428253874:AAEM3EqkhUw1sGk1GSMXsiy4y3jBsHfwlbw"
-MAIN_ADMIN_ID = 5371043130
-JSON_FILE = "anime.json"
-ADMINS_FILE = "admins.json"
-CHANNELS_FILE = "channels.json"
+API_TOKEN = os.getenv("BOT_TOKEN") 
+MAIN_ADMIN_ID = os.getenv("MAIN_ADMIN_ID")
+DATA_DIR = "../data"
+
+JSON_FILE = os.path.join(DATA_DIR, "anime.json")
+ADMINS_FILE = os.path.join(DATA_DIR, "admins.json")
+CHANNELS_FILE = os.path.join(DATA_DIR, "channels.json")
 
 logging.basicConfig(level=logging.INFO)
 bot = telebot.TeleBot(API_TOKEN)
